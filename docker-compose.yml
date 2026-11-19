@@ -1,0 +1,67 @@
+name: populi-electoral
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-populi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ganti_untuk_produksi}
+      POSTGRES_DB: ${POSTGRES_DB:-populi}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-populi} -d ${POSTGRES_DB:-populi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://populi:ganti_untuk_produksi@db:5432/populi}
+      API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health/live').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      API_INTERNAL_BASE_URL: ${API_INTERNAL_BASE_URL:-http://api:8000/api/v1}
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+    depends_on:
+      - api
+    command: npm run dev
+
+volumes:
+  db_data:
+  web_node_modules:
+  web_next:
