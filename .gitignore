@@ -1,0 +1,45 @@
+# Rahasia
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Data (lihat docs/REVISI-v1.1.md bagian 3: dokumen mentah diarsipkan ke NAS, bukan ke Git)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/MANIFEST.csv
+data/tiles/*
+!data/tiles/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+
+# Editor dan OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build dan sementara
+dist/
+build/
+tmp/
+*.log
