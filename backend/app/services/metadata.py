@@ -3,12 +3,14 @@
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.datasets.common import MODEL_BY_KIND, version_scope
-from app.models import AuditLog, DatasetVersion, DataSource, Region
+from app.datasets.common import MODEL_BY_KIND, WITHDRAW_ACTION
+from app.importer.format import RecordKind
+from app.models import AuditLog, DatasetVersion, DataSource, Election, Region
 from app.models.enums import RegionLevel
 from app.schemas.metadata import (
     DatasetHistory,
@@ -37,64 +39,42 @@ def _source_out(source: DataSource, version_count: int) -> SourceOut:
     )
 
 
-async def _version_out(
-    session: AsyncSession,
-    version: DatasetVersion,
-    source_name: str,
-    later_numbers: Sequence[int],
-) -> VersionOut:
-    out = VersionOut(
-        id=version.id,
-        dataset_name=version.dataset_name,
-        version_number=version.version_number,
-        source_id=version.source_id,
-        source_name=source_name,
-        validation_status=version.validation_status,
-        data_status=version.data_status,
-        record_count=version.record_count,
-        collected_at=version.collected_at,
-        created_at=version.created_at,
-        file_reference=version.file_reference,
-        notes=version.notes,
-        current=False,
-    )
+@dataclass
+class _Scope:
+    kind: RecordKind
+    election_id: uuid.UUID
+    levels: set[RegionLevel] = field(default_factory=set)
 
-    scope = await version_scope(session, version.id)
-    if scope is not None:
-        model = MODEL_BY_KIND[scope.kind]
-        levels = set(
-            (
-                await session.scalars(
-                    select(Region.region_level)
-                    .join(model, model.region_id == Region.id)
-                    .where(model.dataset_version_id == version.id)
-                    .distinct()
-                )
-            ).all()
-        )
-        out.current = True
-        out.record_kind = scope.kind.value
-        out.election_type = scope.election.election_type
-        out.election_year = scope.election.election_year
-        out.region_levels = [level for level in LEVEL_ORDER if level in levels]
-    elif later_numbers:
-        # Tanpa baris: barisnya sudah digantikan versi berikutnya (T3.4).
-        out.superseded_by = min(later_numbers)
 
-    events = (
-        await session.scalars(
-            select(AuditLog)
-            .where(AuditLog.entity_type == "dataset_versions", AuditLog.entity_id == version.id)
-            .order_by(AuditLog.created_at)
+async def _scopes(
+    session: AsyncSession, version_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, _Scope]:
+    """Jenis data, kontestasi, dan tingkat wilayah semua versi sekaligus.
+
+    Satu kueri berkelompok per tabel hasil, bukan beberapa kueri per versi.
+    Versi tanpa baris (digantikan atau ditarik) tidak muncul di sini.
+    """
+    scopes: dict[uuid.UUID, _Scope] = {}
+    if not version_ids:
+        return scopes
+    for kind, model in MODEL_BY_KIND.items():
+        rows = await session.execute(
+            select(model.dataset_version_id, model.election_id, Region.region_level)
+            .join(Region, model.region_id == Region.id)
+            .where(model.dataset_version_id.in_(version_ids))
+            .distinct()
         )
-    ).all()
-    out.events = [VersionEvent(action=e.action, at=e.created_at, details=e.payload) for e in events]
-    return out
+        for version_id, election_id, level in rows.tuples():
+            scope = scopes.setdefault(version_id, _Scope(kind, election_id))
+            scope.levels.add(level)
+    return scopes
 
 
 async def _versions_out(
     session: AsyncSession, versions: Sequence[DatasetVersion]
 ) -> list[VersionOut]:
+    """Metadata semua versi dengan jumlah kueri tetap, berapa pun banyaknya versi."""
+    ids = [v.id for v in versions]
     source_names = dict(
         (
             await session.execute(
@@ -106,18 +86,68 @@ async def _versions_out(
         .tuples()
         .all()
     )
+    scopes = await _scopes(session, ids)
+    elections = {
+        e.id: e
+        for e in (
+            await session.scalars(
+                select(Election).where(Election.id.in_({s.election_id for s in scopes.values()}))
+            )
+        ).all()
+    }
+    events: dict[uuid.UUID, list[AuditLog]] = defaultdict(list)
+    if ids:
+        for event in (
+            await session.scalars(
+                select(AuditLog)
+                .where(AuditLog.entity_type == "dataset_versions", AuditLog.entity_id.in_(ids))
+                .order_by(AuditLog.created_at)
+            )
+        ).all():
+            if event.entity_id is not None:
+                events[event.entity_id].append(event)
     numbers: dict[str, list[int]] = defaultdict(list)
     for v in versions:
         numbers[v.dataset_name].append(v.version_number)
-    return [
-        await _version_out(
-            session,
-            v,
-            source_names.get(v.source_id, ""),
-            [n for n in numbers[v.dataset_name] if n > v.version_number],
+
+    out: list[VersionOut] = []
+    for v in versions:
+        version_events = events.get(v.id, [])
+        withdrawn = any(e.action == WITHDRAW_ACTION for e in version_events)
+        item = VersionOut(
+            id=v.id,
+            dataset_name=v.dataset_name,
+            version_number=v.version_number,
+            source_id=v.source_id,
+            source_name=source_names.get(v.source_id, ""),
+            validation_status=v.validation_status,
+            data_status=v.data_status,
+            record_count=v.record_count,
+            collected_at=v.collected_at,
+            created_at=v.created_at,
+            file_reference=v.file_reference,
+            notes=v.notes,
+            current=False,
+            withdrawn=withdrawn,
+            events=[
+                VersionEvent(action=e.action, at=e.created_at, details=e.payload)
+                for e in version_events
+            ],
         )
-        for v in versions
-    ]
+        scope = scopes.get(v.id)
+        if scope is not None:
+            election = elections[scope.election_id]
+            item.current = True
+            item.record_kind = scope.kind.value
+            item.election_type = election.election_type
+            item.election_year = election.election_year
+            item.region_levels = [level for level in LEVEL_ORDER if level in scope.levels]
+        elif not withdrawn:
+            later = [n for n in numbers[v.dataset_name] if n > v.version_number]
+            # Tanpa baris dan tidak ditarik: barisnya digantikan versi berikutnya (T3.4).
+            item.superseded_by = min(later) if later else None
+        out.append(item)
+    return out
 
 
 async def list_sources(session: AsyncSession) -> list[SourceOut]:

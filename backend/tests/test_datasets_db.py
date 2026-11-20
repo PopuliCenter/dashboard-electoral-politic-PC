@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.datasets.common import DatasetError, delete_rows
 from app.datasets.promotion import promote_version
 from app.datasets.staging import LoadResult, SourceInfo, load_into_staging
+from app.datasets.withdraw import check_admin, withdraw_version
 from app.importer.catalog import load_catalog
 from app.importer.format import RecordKind
 from app.importer.validator import validate_file
@@ -31,8 +32,10 @@ from app.models import (
     Party,
     Region,
     RegionTurnout,
+    User,
 )
-from app.models.enums import DataStatus, JobStatus, RegionLevel, ValidationStatus
+from app.models.enums import DataStatus, JobStatus, RegionLevel, RoleCode, ValidationStatus
+from app.services import auth
 from tests.import_fixtures import (
     isi_referensi_fiktif,
     partisipasi,
@@ -578,3 +581,119 @@ async def test_versi_yang_sudah_lama_digantikan_tidak_memicu_peringatan_palsu(
     v6 = await _muat(staging, tmp_path / "f.csv", _dpr(("00.01.02", "UJI_A", "14")))
     assert v6.version is not None
     assert (await promote_version(staging, produksi, v6.version.id)).warnings == []
+
+
+# --------------------------------------------------------------------------- #
+# Review T5.3: penarikan versi dan salinan catatan muat
+# --------------------------------------------------------------------------- #
+
+
+async def _admin(session: AsyncSession, email: str = "admin-tarik@uji.invalid") -> User:
+    return await auth.create_user(
+        session, email, "Admin Uji", "kata-sandi-uji-panjang", RoleCode.ADMIN
+    )
+
+
+async def test_promosi_menyalin_catatan_muat_dari_staging(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    hasil = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert hasil.version is not None
+    await promote_version(staging, produksi, hasil.version.id)
+    salinan = await produksi.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_id == hasil.version.id, AuditLog.action == "dataset.load_staging"
+        )
+    )
+    assert salinan is not None and salinan.payload is not None
+    assert salinan.payload["copied_from"] == "staging"
+    assert salinan.payload["file"] == "a.csv"
+
+
+async def test_tabrakan_menunjuk_perintah_tarik_yang_ada(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, _ = dua_db
+    resmi = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert resmi.version is not None
+    with pytest.raises(DatasetError) as info:
+        await _muat(
+            staging,
+            tmp_path / "b.csv",
+            [suara_partai("00.01.02", "UJI_A", "9", status="unofficial")],
+            dataset="uji-dpr-2024-sirekap",
+        )
+    assert f"python -m app.datasets withdraw {resmi.version.id} --db staging" in str(info.value)
+
+
+async def test_tarik_versi_lalu_dataset_lain_bisa_dipromosikan(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    admin = await _admin(produksi)
+    resmi = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert resmi.version is not None
+    await promote_version(staging, produksi, resmi.version.id)
+
+    laporan = await withdraw_version(
+        produksi,
+        resmi.version.id,
+        reason="Diganti data Sirekap atas keputusan tim",
+        actor=admin,
+        actor_email=admin.email,
+    )
+    assert laporan.deleted == 1
+    assert await _suara_produksi(produksi, resmi.version.id) == {}
+    assert await produksi.get(DatasetVersion, resmi.version.id) is not None  # riwayat tetap
+    jejak = await produksi.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_id == resmi.version.id, AuditLog.action == "dataset.withdraw"
+        )
+    )
+    assert jejak is not None and jejak.actor_user_id == admin.id
+    assert jejak.payload is not None and "Sirekap" in jejak.payload["reason"]
+
+    with pytest.raises(DatasetError, match="sudah ditarik"):
+        await withdraw_version(
+            produksi,
+            resmi.version.id,
+            reason="alasan yang cukup panjang",
+            actor=admin,
+            actor_email=admin.email,
+        )
+
+    # Sel yang tadinya bertabrakan kini bebas di produksi.
+    await delete_rows(staging, RecordKind.PARTY_VOTES, [resmi.version.id])
+    sirekap = await _muat(
+        staging,
+        tmp_path / "b.csv",
+        [suara_partai("00.01.02", "UJI_A", "9", status="unofficial")],
+        dataset="uji-dpr-2024-sirekap",
+    )
+    assert sirekap.version is not None
+    assert (await promote_version(staging, produksi, sirekap.version.id)).inserted == 1
+
+
+async def test_tarik_butuh_admin_dan_alasan(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    peneliti = await auth.create_user(
+        produksi,
+        "peneliti-tarik@uji.invalid",
+        "Peneliti",
+        "kata-sandi-uji-panjang",
+        RoleCode.RESEARCHER,
+    )
+    with pytest.raises(DatasetError, match="bukan Admin"):
+        await check_admin(produksi, peneliti, peneliti.email)
+    with pytest.raises(DatasetError, match="tidak ada"):
+        await check_admin(produksi, None, "hantu@uji.invalid")
+
+    hasil = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert hasil.version is not None
+    with pytest.raises(DatasetError, match="alasan wajib"):
+        await withdraw_version(
+            staging, hasil.version.id, reason="pendek", actor=None, actor_email="x@uji.invalid"
+        )

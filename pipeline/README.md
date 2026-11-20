@@ -51,6 +51,15 @@ Aturannya:
 - Promosi memetakan partai, paslon, kontestasi, dan wilayah lewat kode, bukan UUID.
   Data referensi dan wilayah harus sudah ada di produksi lebih dulu.
 - Versi yang lebih lama tidak bisa menimpa versi yang lebih baru di produksi.
+- **Menarik versi** (Admin saja, alasan wajib, tercatat di `audit_logs`): menghapus
+  baris hasil satu versi, misalnya supaya dataset lain boleh mengisi sel yang sama.
+  Riwayat versinya tetap ada dan tampil "ditarik" di halaman Data. Versi yang
+  ditarik tidak bisa dipromosikan ulang; perbaikannya dimuat sebagai versi baru.
+
+  ```
+  make withdraw v=<version_id> a="--by admin@... --reason 'alasan' --dry-run"
+  make withdraw v=<version_id> a="--by admin@... --reason 'alasan' --db staging"
+  ```
 
 ## Laporan kelengkapan (T3.5)
 

@@ -425,6 +425,25 @@ async def promote_version(
             payload=payload,
         )
     )
+    # Catatan muat (berkas, checksum, peringatan penggantian) tertulis di staging.
+    # Salin ke produksi supaya riwayat versi di halaman metadata lengkap.
+    load_events = (
+        await staging.scalars(
+            select(AuditLog)
+            .where(AuditLog.entity_id == version.id, AuditLog.action == "dataset.load_staging")
+            .order_by(AuditLog.created_at)
+        )
+    ).all()
+    for event in load_events:
+        production.add(
+            AuditLog(
+                action=event.action,
+                entity_type=event.entity_type,
+                entity_id=event.entity_id,
+                payload={**(event.payload or {}), "copied_from": "staging"},
+                created_at=event.created_at,
+            )
+        )
     await production.flush()
     return report
 

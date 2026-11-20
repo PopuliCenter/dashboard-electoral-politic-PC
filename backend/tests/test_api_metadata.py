@@ -150,3 +150,68 @@ async def test_metadata_wajib_login(session: AsyncSession) -> None:
                 assert (await c.get(f"{PREFIX}{path}")).status_code == 401
     finally:
         app.dependency_overrides.pop(get_session, None)
+
+
+async def test_jumlah_kueri_metadata_tidak_tumbuh_per_versi(
+    session: AsyncSession, tmp_path: Path, api: AsyncClient
+) -> None:
+    """Review T5.3: sebelumnya 4 kueri per versi."""
+    from sqlalchemy import event
+
+    from app.services.metadata import list_datasets
+
+    async def hitung() -> int:
+        jumlah = 0
+
+        def tambah(*_: object) -> None:
+            nonlocal jumlah
+            jumlah += 1
+
+        sync_engine = session.bind.sync_engine  # type: ignore[union-attr]
+        event.listen(sync_engine, "before_cursor_execute", tambah)
+        try:
+            await list_datasets(session)
+        finally:
+            event.remove(sync_engine, "before_cursor_execute", tambah)
+        return jumlah
+
+    async def tambah_versi(jumlah: int, awal: int) -> None:
+        for i in range(awal, awal + jumlah):
+            await _muat(
+                session,
+                tmp_path / f"tambah{i}.csv",
+                [suara_partai("00.01.02", "UJI_A", str(20 + i))],
+                DATASET,
+            )
+        await session.flush()
+
+    await tambah_versi(1, 0)
+    sedikit = await hitung()
+    await tambah_versi(4, 1)
+    assert await hitung() == sedikit
+
+
+async def test_versi_ditarik_ditandai(session: AsyncSession, api: AsyncClient) -> None:
+    from sqlalchemy import select
+
+    from app.datasets.withdraw import withdraw_version
+    from app.models import DatasetVersion
+
+    v2 = await session.scalar(
+        select(DatasetVersion).where(
+            DatasetVersion.dataset_name == DATASET, DatasetVersion.version_number == 2
+        )
+    )
+    assert v2 is not None
+    await withdraw_version(
+        session, v2.id, reason="Uji penarikan versi", actor=None, actor_email="a@uji.invalid"
+    )
+    body = (await api.get(f"{PREFIX}/datasets/{DATASET}")).json()
+    v2_out = _versi(body, 2)
+    assert v2_out["withdrawn"] is True and v2_out["current"] is False
+    assert v2_out["superseded_by"] is None
+    assert _versi(body, 1)["superseded_by"] == 2
+    ringkas = next(
+        d for d in (await api.get(f"{PREFIX}/datasets")).json() if d["dataset_name"] == DATASET
+    )
+    assert ringkas["current"] is None

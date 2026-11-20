@@ -91,6 +91,7 @@ class CandidateResult(Base, UUIDPrimaryKey, Timestamps):
         ),
         CheckConstraint("vote_count >= 0", name="suara_non_negatif"),
         Index("ix_candidate_results_election_id_region_id", "election_id", "region_id"),
+        Index("ix_candidate_results_dataset_version_id", "dataset_version_id"),
     )
 
 
@@ -135,4 +136,5 @@ class RegionTurnout(Base, UUIDPrimaryKey, Timestamps):
             name="angka_partisipasi_non_negatif",
         ),
         Index("ix_region_turnout_election_id", "election_id"),
+        Index("ix_region_turnout_dataset_version_id", "dataset_version_id"),
     )

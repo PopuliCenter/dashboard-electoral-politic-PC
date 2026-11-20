@@ -48,6 +48,9 @@ class VersionOut(BaseModel):
     file_reference: str | None = Field(description="Nama berkas dan checksum SHA-256")
     notes: str | None
     current: bool = Field(description="Baris hasil versi ini yang sedang dipakai")
+    withdrawn: bool = Field(
+        default=False, description="Barisnya ditarik dari produksi oleh Admin (lihat events)"
+    )
     superseded_by: int | None = Field(
         default=None, description="Nomor versi yang menggantikan versi ini"
     )

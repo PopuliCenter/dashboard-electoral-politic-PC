@@ -22,6 +22,10 @@ from app.models.enums import DataStatus
 ResultRow = ElectionResult | CandidateResult | RegionTurnout
 ResultModel = type[ElectionResult] | type[CandidateResult] | type[RegionTurnout]
 
+# Aksi audit penarikan versi. Metadata (T5.3) memakai ini untuk menandai versi
+# yang barisnya ditarik, bukan digantikan.
+WITHDRAW_ACTION = "dataset.withdraw"
+
 MODEL_BY_KIND: dict[RecordKind, ResultModel] = {
     RecordKind.PARTY_VOTES: ElectionResult,
     RecordKind.CANDIDATE_VOTES: CandidateResult,
@@ -131,8 +135,11 @@ async def check_conflicts(
     raise DatasetError(
         [
             f"{clashes[v.id]} baris bertabrakan dengan dataset {v.dataset_name} "
-            f"v{v.version_number} ({v.data_status.value}) yang sudah ada di {where}; "
-            "putuskan mana yang dipakai, lalu tarik yang lain lebih dulu"
+            f"v{v.version_number} ({v.data_status.value}) yang sudah ada di {where}. "
+            "Putuskan mana yang dipakai. Bila yang sudah ada harus diganti, Admin "
+            f"menariknya dulu: python -m app.datasets withdraw {v.id} "
+            f"--db {'staging' if where == 'staging' else 'production'} "
+            '--by EMAIL_ADMIN --reason "..."'
             for v in owners
         ]
     )

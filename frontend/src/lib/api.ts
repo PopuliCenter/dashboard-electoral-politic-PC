@@ -5,6 +5,22 @@
  * dari browser dipakai NEXT_PUBLIC_API_BASE_URL.
  */
 
+/**
+ * Batas waktu setiap panggilan API dari server Next.js. Tanpa ini, halaman ikut
+ * menggantung tanpa batas saat API macet, dan pesan "API tidak bisa dihubungi"
+ * tidak pernah tampil.
+ */
+export const API_TIMEOUT_MS = 8000;
+
+/** fetch ke API dengan batas waktu; melempar bila habis waktu atau gagal jaringan. */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(`${apiBaseUrl}${path}`, {
+    cache: "no-store",
+    ...init,
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+  });
+}
+
 export const apiBaseUrl =
   typeof window === "undefined"
     ? (process.env.API_INTERNAL_BASE_URL ?? "http://api:8000/api/v1")
@@ -69,10 +85,7 @@ export const roleLabel: Record<Role, string> = { admin: "Admin", researcher: "Pe
 export async function fetchCurrentUser(cookieHeader: string): Promise<CurrentUser | null> {
   if (!cookieHeader) return null;
   try {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, {
-      cache: "no-store",
-      headers: { cookie: cookieHeader },
-    });
+    const response = await apiFetch("/auth/me", { headers: { cookie: cookieHeader } });
     return response.ok ? ((await response.json()) as CurrentUser) : null;
   } catch {
     return null;
@@ -135,10 +148,7 @@ export type Authed<T> = { ok: true; data: T } | { ok: false; status: number | nu
 /** GET dari server Next.js dengan cookie sesi peramban; tidak pernah melempar. */
 export async function fetchAuthed<T>(path: string, cookieHeader: string): Promise<Authed<T>> {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
-      cache: "no-store",
-      headers: { cookie: cookieHeader },
-    });
+    const response = await apiFetch(path, { headers: { cookie: cookieHeader } });
     if (!response.ok) return { ok: false, status: response.status };
     return { ok: true, data: (await response.json()) as T };
   } catch {
@@ -166,7 +176,7 @@ export function exportUrl(
 /** Tidak pernah melempar: halaman harus tetap tampil walau API mati. */
 export async function fetchHealth(): Promise<HealthResult> {
   try {
-    const response = await fetch(`${apiBaseUrl}/health`, { cache: "no-store" });
+    const response = await apiFetch("/health");
     const data = (await response.json()) as HealthResponse;
     return { reachable: true, data };
   } catch (error) {

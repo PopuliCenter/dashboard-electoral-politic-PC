@@ -25,7 +25,7 @@ $runWeb = @("docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-lc")
 
 switch ($Target) {
     "help" {
-        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, staging-init, load, datasets, promote, completeness, users, reset"
+        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, staging-init, load, datasets, promote, withdraw, completeness, users, reset"
     }
     "up" {
         Invoke-Step "docker compose up" @("docker", "compose", "up", "-d")
@@ -73,6 +73,10 @@ switch ($Target) {
         Invoke-Step "promosi ke produksi" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.datasets", "promote") + $Rest)
     }
     "users" { Invoke-Step "kelola pengguna" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.users") + $Rest) }
+    "withdraw" {
+        if (-not $Rest -or $Rest.Count -lt 1) { throw 'pakai: .\make.ps1 withdraw VERSION_ID --by EMAIL --reason "..."' }
+        Invoke-Step "tarik versi dataset" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.datasets", "withdraw") + $Rest)
+    }
     "completeness" { Invoke-Step "laporan kelengkapan" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.reports", "completeness") + $Rest) }
     "revision" {
         if (-not $Rest -or $Rest.Count -eq 0) { throw 'pakai: .\make.ps1 revision "pesan migrasi"' }

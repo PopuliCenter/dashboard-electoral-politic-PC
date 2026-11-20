@@ -6,6 +6,8 @@ Pemakaian (di dalam kontainer api):
         [--source-type T --source-url U --collection-method M --retrieved-at YYYY-MM-DD]
     python -m app.datasets list
     python -m app.datasets promote VERSION_ID [--dry-run]
+    python -m app.datasets withdraw VERSION_ID --by EMAIL_ADMIN --reason "..." \\
+        [--db production|staging] [--dry-run]
 
 `load` hanya menulis ke STAGING_DATABASE_URL. `promote` membaca staging dan
 menulis ke DATABASE_URL. Keduanya menolak jalan bila kedua URL kosong atau sama.
@@ -29,9 +31,11 @@ from app.core.config import get_settings
 from app.datasets.common import DatasetError, describe, version_scope
 from app.datasets.promotion import promote_version, promotion_audit
 from app.datasets.staging import SourceInfo, load_into_staging
+from app.datasets.withdraw import check_admin, withdraw_version
 from app.importer.catalog import load_catalog
 from app.importer.validator import validate_file
-from app.models import DatasetVersion
+from app.models import DatasetVersion, User
+from app.services.auth import normalize_email
 
 
 class ConfigError(Exception):
@@ -166,6 +170,42 @@ async def run_promote(args: argparse.Namespace) -> int:
     return 0
 
 
+async def run_withdraw(args: argparse.Namespace) -> int:
+    staging_url, production_url = _urls()
+    # Admin selalu diperiksa di produksi: di sanalah pengguna dikelola.
+    async with _session(production_url) as production:
+        user = await production.scalar(select(User).where(User.email == normalize_email(args.by)))
+        try:
+            admin = await check_admin(production, user, args.by)
+        except DatasetError as exc:
+            _print_problems("Penarikan ditolak.", exc.errors)
+            return 1
+
+    target = production_url if args.db == "production" else staging_url
+    async with _session(target) as session:
+        try:
+            report = await withdraw_version(
+                session,
+                args.version_id,
+                reason=args.reason,
+                actor=admin if args.db == "production" else None,
+                actor_email=admin.email,
+            )
+        except DatasetError as exc:
+            await session.rollback()
+            _print_problems("Penarikan ditolak; tidak ada yang berubah.", exc.errors)
+            return 1
+        if args.dry_run:
+            await session.rollback()
+        else:
+            await session.commit()
+
+    print("Mode uji: tidak ada yang berubah." if args.dry_run else f"Ditarik dari {args.db}.")
+    print(f"  {report.dataset_name} v{report.version_number}  {report.scope}")
+    print(f"  baris dihapus   {report.deleted}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app.datasets", description="Muat ke staging dan promosi ke produksi."
@@ -193,6 +233,16 @@ def main(argv: list[str] | None = None) -> int:
     promote.add_argument("version_id", type=uuid.UUID)
     promote.add_argument("--dry-run", action="store_true", help="periksa tanpa menulis")
     promote.set_defaults(handler=run_promote)
+
+    withdraw = sub.add_parser(
+        "withdraw", help="tarik baris satu versi (Admin, alasan wajib, tercatat di audit)"
+    )
+    withdraw.add_argument("version_id", type=uuid.UUID)
+    withdraw.add_argument("--by", required=True, help="email Admin yang menarik")
+    withdraw.add_argument("--reason", required=True, help="alasan penarikan")
+    withdraw.add_argument("--db", choices=("production", "staging"), default="production")
+    withdraw.add_argument("--dry-run", action="store_true", help="periksa tanpa menulis")
+    withdraw.set_defaults(handler=run_withdraw)
 
     args = parser.parse_args(argv)
     try:
