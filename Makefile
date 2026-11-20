@@ -66,10 +66,12 @@ seed-dry:
 	$(COMPOSE) run --rm api python -m app.seed --dry-run
 
 # Berkas di-mount read-only ke /import; nama berkas dipertahankan supaya pesan
-# galat menyebut nama yang sama dengan yang dibuka peneliti.
+# galat menyebut nama yang sama dengan yang dibuka peneliti. realpath/basename
+# di shell, bukan $(abspath)/$(notdir): fungsi make memecah path berspasi.
 validate:
 	@test -n "$(f)" || (echo "pakai: make validate f=path/ke/berkas.csv" && exit 1)
-	$(COMPOSE) run --rm -v "$(abspath $(f)):/import/$(notdir $(f)):ro" api python -m app.importer "/import/$(notdir $(f))"
+	@src="$$(realpath "$(f)")" && name="$$(basename "$$src")" && \
+		$(COMPOSE) run --rm -v "$$src:/import/$$name:ro" api python -m app.importer "/import/$$name"
 
 # Lokal, staging adalah database kedua di kontainer db yang sama. Migrasi dan
 # seed dijalankan dengan DATABASE_URL diarahkan ke STAGING_DATABASE_URL.
@@ -80,7 +82,8 @@ staging-init:
 
 load:
 	@test -n "$(f)" || (echo "pakai: make load f=berkas.csv a=\"--dataset NAMA --source-name NAMA ...\"" && exit 1)
-	$(COMPOSE) run --rm -v "$(abspath $(f)):/import/$(notdir $(f)):ro" api python -m app.datasets load "/import/$(notdir $(f))" $(a)
+	@src="$$(realpath "$(f)")" && name="$$(basename "$$src")" && \
+		$(COMPOSE) run --rm -v "$$src:/import/$$name:ro" api python -m app.datasets load "/import/$$name" $(a)
 
 datasets:
 	$(COMPOSE) run --rm api python -m app.datasets list

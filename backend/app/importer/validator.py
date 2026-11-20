@@ -25,7 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.core.csv_files import check_columns, read_csv
+from app.core.csv_files import BIGINT_MAX, check_columns, parse_whole_number, read_csv
 from app.importer.catalog import ElectionKey, ReferenceCatalog
 from app.importer.format import COLUMNS, LABEL, MARKER_COLUMNS, TURNOUT_FIELDS, RecordKind
 from app.models.enums import DataStatus, ElectionType
@@ -97,7 +97,7 @@ class _Row:
     def error(self, message: str) -> None:
         self.errors.append(f"{self.file}:{self.line}: {message}")
 
-    def count(self, column: str, *, required: bool) -> int | None:
+    def count(self, column: str, *, required: bool, maximum: int = BIGINT_MAX) -> int | None:
         """Bilangan bulat >= 0. Kosong berarti tidak tersedia (bila boleh)."""
         value = self.data.get(column, "")
         if not value:
@@ -107,18 +107,11 @@ class _Row:
                     "hapus barisnya; jangan diisi perkiraan"
                 )
             return None
-        if value.isdigit():
-            return int(value)
-        if value.startswith("-") and value[1:].isdigit():
-            self.error(f"{column} tidak boleh negatif ({value})")
-        elif re.fullmatch(r"\d{1,3}([.,]\d{3})+", value):
-            digits = re.sub(r"[.,]", "", value)
-            self.error(f"{column} {value!r}: tulis tanpa pemisah ribuan, yaitu {digits}")
-        elif re.fullmatch(r"\d+[.,]\d+", value):
-            self.error(f"{column} {value!r} harus bilangan bulat, bukan desimal")
-        else:
-            self.error(f"{column} {value!r} bukan bilangan bulat")
-        return None
+        parsed = parse_whole_number(value, maximum=maximum)
+        if isinstance(parsed, str):
+            self.error(f"{column} {parsed}")
+            return None
+        return parsed
 
 
 def _lines(lines: Iterable[int]) -> str:
@@ -190,7 +183,7 @@ def _uniform_election(
                 f"{name}: election_type {raw_type!r} tidak dikenal; pilih salah satu: "
                 f"{', '.join(sorted(valid_types))}"
             )
-        elif not raw_year.isdigit():
+        elif not isinstance(parse_whole_number(raw_year), int):
             report.errors.append(f"{name}: election_year {raw_year!r} harus tahun, misal 2024")
         else:
             key = (ElectionType(raw_type), int(raw_year))
@@ -198,6 +191,12 @@ def _uniform_election(
                 report.errors.append(
                     f"{name}: kontestasi {raw_type} {raw_year} tidak ada di database; "
                     "jalankan seed data referensi lebih dulu (make seed)"
+                )
+            elif key in catalog.undated_elections:
+                report.errors.append(
+                    f"{name}: kontestasi {raw_type} {raw_year} belum punya tanggal pemungutan "
+                    "suara di database, jadi wilayah yang berlaku tidak bisa ditentukan; "
+                    "isi elections.csv lalu jalankan seed"
                 )
             else:
                 report.election = key
@@ -216,7 +215,16 @@ def _uniform_election(
                 f"{', '.join(sorted(valid_statuses))}"
             )
         else:
-            report.data_status = DataStatus(raw_status)
+            status = DataStatus(raw_status)
+            if status is DataStatus.INTERNAL_AGGREGATE:
+                # Status ini untuk agregat media dan survei (REVISI-v1.1 bagian 7),
+                # bukan hasil pemilu. Diputuskan pengguna 20 November 2026.
+                report.errors.append(
+                    f"{name}: data_status internal_aggregate tidak berlaku untuk hasil pemilu; "
+                    "pakai official (rekapitulasi KPU) atau unofficial (misalnya Sirekap)"
+                )
+                return
+            report.data_status = status
             if report.data_status is DataStatus.UNOFFICIAL:
                 report.warnings.append(
                     f"{name}: data tidak resmi (unofficial). Boleh tidaknya data Sirekap/Situng "
@@ -259,7 +267,13 @@ def _region(r: _Row, report: ValidationReport, catalog: ReferenceCatalog) -> str
         return None
     if report.election is not None:
         election_type, year = report.election
-        if code not in catalog.regions.get(report.election, {}):
+        if code in catalog.ambiguous_regions.get(report.election, frozenset()):
+            r.error(
+                f"region_code {code} punya lebih dari satu versi yang berlaku pada Pemilu {year}; "
+                "perbaiki valid_from/valid_until di tabel regions"
+            )
+            return None
+        if code not in catalog.regions.get(report.election, frozenset()):
             r.error(
                 f"region_code {code} tidak dikenal atau tidak berlaku pada Pemilu {year} "
                 f"({election_type.value})"
@@ -298,12 +312,13 @@ def _parse_rows(
         elif report.kind is RecordKind.CANDIDATE_VOTES:
             raw_pair = data["pair_number"]
             pair: int | None = None
-            if not raw_pair.isdigit() or int(raw_pair) == 0:
+            parsed_pair = parse_whole_number(raw_pair)
+            if not isinstance(parsed_pair, int) or parsed_pair == 0:
                 r.error(f"pair_number {raw_pair!r} harus nomor urut paslon (1, 2, ...)")
-            elif year is not None and (year, int(raw_pair)) not in catalog.candidate_pairs:
+            elif year is not None and (year, parsed_pair) not in catalog.candidate_pairs:
                 r.error(f"pasangan calon nomor {raw_pair} tidak ada di Pilpres {year}")
             else:
-                pair = int(raw_pair)
+                pair = parsed_pair
             votes = r.count("vote_count", required=True)
             if region and pair is not None and votes is not None:
                 report.records.append(CandidateVote(line, region, pair, votes))

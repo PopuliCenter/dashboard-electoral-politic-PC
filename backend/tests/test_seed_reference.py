@@ -288,3 +288,21 @@ def test_produksi_menerima_data_yang_sudah_diverifikasi_semua(tmp_path: Path) ->
         pairs=paslon_fiktif(verified_by="peneliti-uji"),
     )
     assert check_verification(load_reference_data(folder), "production") == []
+
+
+# --------------------------------------------------------------------------- #
+# Temuan review T3.1 (pembaca CSV dan parser angka dipakai bersama)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("nilai", ["9¹", "\u0661", "\uff19"])
+def test_nomor_urut_bukan_ascii_ditolak_bukan_crash(tmp_path: Path, nilai: str) -> None:
+    baris = [partai("UJI_A", "Partai A", nomor_2019=nilai, nomor_2024=901)]
+    assert _ada(_galat(tulis_referensi(tmp_path, parties=baris)), "ballot_number_2019", "0-9")
+
+
+def test_baris_partai_terpotong_ditolak(tmp_path: Path) -> None:
+    folder = tulis_referensi(tmp_path)
+    path = folder / "parties.csv"
+    path.write_text(path.read_text(encoding="utf-8") + "UJI_D,Partai D\n", encoding="utf-8")
+    assert _ada(_galat(folder), "parties.csv:", "jumlah kolom kurang dari judul")

@@ -18,19 +18,9 @@ from app.seed.apply import apply_reference_data
 from app.seed.reference import load_reference_data
 from tests.reference_fixtures import tulis_referensi
 
-WILAYAH_2019 = {
-    "00": RegionLevel.PROVINCE,
-    "00.01": RegionLevel.REGENCY,
-    "00.01.01": RegionLevel.DISTRICT,
-    "00.01.02": RegionLevel.DISTRICT,
-}
+WILAYAH_2019 = frozenset({"00", "00.01", "00.01.01", "00.01.02"})
 # 00.01.02 dipecah sebelum 2024: 00.01.03 baru, 00.01.02 tidak berlaku lagi.
-WILAYAH_2024 = {
-    "00": RegionLevel.PROVINCE,
-    "00.01": RegionLevel.REGENCY,
-    "00.01.01": RegionLevel.DISTRICT,
-    "00.01.03": RegionLevel.DISTRICT,
-}
+WILAYAH_2024 = frozenset({"00", "00.01", "00.01.01", "00.01.03"})
 
 
 def katalog_fiktif() -> ReferenceCatalog:

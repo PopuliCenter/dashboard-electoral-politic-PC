@@ -4,15 +4,15 @@ Validator sendiri murni dan hanya menerima katalog ini, supaya bisa diuji tanpa
 database. `load_catalog` membangunnya dari database.
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CandidatePair, Election, Party, Region
-from app.models.enums import ElectionType, RegionLevel
+from app.models.enums import ElectionType
 from app.seed.reference import SUPPORTED_YEARS
 
 ElectionKey = tuple[ElectionType, int]
@@ -26,29 +26,38 @@ class ReferenceCatalog:
     party_years: Mapping[str, frozenset[int]]
     # (tahun, nomor urut) pasangan calon Pilpres.
     candidate_pairs: frozenset[tuple[int, int]]
-    # kontestasi -> kode wilayah yang berlaku pada hari pemungutan suaranya -> tingkat.
-    regions: Mapping[ElectionKey, Mapping[str, RegionLevel]]
+    # kontestasi -> kode wilayah yang berlaku pada hari pemungutan suaranya.
+    regions: Mapping[ElectionKey, frozenset[str]]
+    # kontestasi -> kode yang punya lebih dari satu versi berlaku pada hari itu.
+    # Skema hanya unik pada (region_code, valid_from), jadi masa berlaku yang
+    # tumpang-tindih mungkin terjadi; baris dengan kode seperti ini ditolak.
+    ambiguous_regions: Mapping[ElectionKey, frozenset[str]] = field(default_factory=dict)
+    # Kontestasi tanpa tanggal pemungutan suara: wilayahnya tidak bisa ditentukan.
+    undated_elections: frozenset[ElectionKey] = frozenset()
 
 
 async def load_catalog(session: AsyncSession) -> ReferenceCatalog:
     elections = (await session.scalars(select(Election))).all()
 
-    regions: dict[ElectionKey, dict[str, RegionLevel]] = {}
+    regions: dict[ElectionKey, frozenset[str]] = {}
+    ambiguous: dict[ElectionKey, frozenset[str]] = {}
+    undated: set[ElectionKey] = set()
     for election in elections:
         key = (election.election_type, election.election_year)
         if election.election_date is None:
-            # Tanpa tanggal, wilayah yang berlaku tidak bisa ditentukan. Katalog
-            # kosong membuat setiap kode wilayah ditolak dengan pesan yang jelas.
-            regions[key] = {}
+            regions[key] = frozenset()
+            undated.add(key)
             continue
         # valid_until dianggap inklusif: hari terakhir wilayah itu masih berlaku.
         rows = await session.execute(
-            select(Region.region_code, Region.region_level).where(
+            select(Region.region_code).where(
                 Region.valid_from <= election.election_date,
                 or_(Region.valid_until.is_(None), Region.valid_until >= election.election_date),
             )
         )
-        regions[key] = dict(rows.tuples().all())
+        counts = Counter(rows.scalars().all())
+        regions[key] = frozenset(counts)
+        ambiguous[key] = frozenset(code for code, n in counts.items() if n > 1)
 
     party_years: dict[str, set[int]] = defaultdict(set)
     for party in (await session.scalars(select(Party))).all():
@@ -67,4 +76,6 @@ async def load_catalog(session: AsyncSession) -> ReferenceCatalog:
         party_years={code: frozenset(years) for code, years in party_years.items()},
         candidate_pairs=frozenset((year, number) for year, number in pair_rows.all()),
         regions=regions,
+        ambiguous_regions=ambiguous,
+        undated_elections=frozenset(undated),
     )

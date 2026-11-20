@@ -1,5 +1,6 @@
 """Validator format impor baku (T3.1), tanpa database."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -330,3 +331,68 @@ def test_berkas_gagal_tidak_membawa_baris_apa_pun(tmp_path: Path) -> None:
     report = _validasi(tmp_path, [suara_partai(), suara_partai(region="00.09.09")])
     assert not report.passed
     assert report.records == []
+
+
+# --------------------------------------------------------------------------- #
+# Temuan review T3.1
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("nilai", ["120¹", "\u0661\u0662\u0660", "\uff11\uff12\uff10"])
+def test_angka_bukan_ascii_ditolak_bukan_crash(tmp_path: Path, nilai: str) -> None:
+    report = _validasi(tmp_path, [suara_partai(votes=nilai)])
+    assert _ada(report, "karakter selain angka 0-9")
+
+
+@pytest.mark.parametrize("nomor", ["²", "\u0661"])
+def test_nomor_paslon_bukan_ascii_ditolak(tmp_path: Path, nomor: str) -> None:
+    report = _validasi(tmp_path, [suara_paslon(pair=nomor)])
+    assert _ada(report, "pair_number")
+
+
+def test_tahun_dengan_catatan_kaki_ditolak(tmp_path: Path) -> None:
+    report = _validasi(tmp_path, [suara_partai(tahun="2024¹")])
+    assert _ada(report, "harus tahun")
+
+
+def test_suara_melebihi_bigint_ditolak_di_validator(tmp_path: Path) -> None:
+    report = _validasi(tmp_path, [suara_partai(votes="9" * 25)])
+    assert _ada(report, "terlalu besar")
+
+
+def test_baris_partisipasi_terpotong_tidak_jadi_tidak_tersedia(tmp_path: Path) -> None:
+    path = tmp_path / "impor.csv"
+    path.write_text(
+        "data_status,election_type,election_year,region_code,registered_voters,"
+        "voters_turned_out,valid_votes,invalid_votes\n"
+        "official,legislative_dpr,2024,00.01.01,1000,800\n",
+        encoding="utf-8",
+    )
+    report = validate_file(path, katalog_fiktif())
+    assert _ada(report, "jumlah kolom kurang dari judul")
+    assert report.records == []
+
+
+def test_internal_aggregate_ditolak_untuk_hasil_pemilu(tmp_path: Path) -> None:
+    for baris in (
+        suara_partai(status="internal_aggregate"),
+        suara_paslon(status="internal_aggregate"),
+        partisipasi(status="internal_aggregate"),
+    ):
+        report = _validasi(tmp_path, [baris])
+        assert _ada(report, "internal_aggregate tidak berlaku untuk hasil pemilu")
+
+
+def test_kode_wilayah_berversi_ganda_ditolak(tmp_path: Path) -> None:
+    key = (ElectionType.LEGISLATIVE_DPR, 2024)
+    catalog = replace(katalog_fiktif(), ambiguous_regions={key: frozenset({"00.01.01"})})
+    report = validate_file(tulis_csv(tmp_path / "impor.csv", [suara_partai()]), catalog)
+    assert _ada(report, "lebih dari satu versi")
+
+
+def test_kontestasi_tanpa_tanggal_disebut_jelas(tmp_path: Path) -> None:
+    key = (ElectionType.LEGISLATIVE_DPR, 2024)
+    catalog = replace(katalog_fiktif(), undated_elections=frozenset({key}))
+    report = validate_file(tulis_csv(tmp_path / "impor.csv", [suara_partai()]), catalog)
+    assert _ada(report, "belum punya tanggal pemungutan suara")
+    assert not _ada(report, "region_code")

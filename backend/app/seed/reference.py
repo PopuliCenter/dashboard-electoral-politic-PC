@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from app.core.csv_files import check_columns, read_csv
+from app.core.csv_files import check_columns, parse_whole_number, read_csv
 from app.models.enums import ElectionType
 
 # Terikat ke kolom contested_<tahun> dan ballot_number_<tahun> di tabel parties.
@@ -170,10 +170,10 @@ class _Row:
             if required:
                 self.error(f"{column} wajib diisi")
             return None
-        if not value.isdigit():
-            self.error(f"{column} harus bilangan bulat positif, bukan {value!r}")
+        number = parse_whole_number(value)
+        if isinstance(number, str):
+            self.error(f"{column} harus bilangan bulat positif: {number}")
             return None
-        number = int(value)
         if number <= 0:
             self.error(f"{column} harus lebih dari 0")
             return None

@@ -17,7 +17,10 @@ staging maupun produksi.
   berlokal Indonesia) sama-sama diterima. Urutan kolom bebas; kolom lain tidak
   boleh ada.
 - **Angka**: bilangan bulat tanpa pemisah ribuan (`1234567`, bukan
-  `1.234.567`), tidak negatif. Nol boleh.
+  `1.234.567`), tidak negatif. Nol boleh. Hanya angka 0-9: tanda catatan kaki
+  yang terbawa dari PDF (misalnya `120¹`) ditolak, hapus tandanya.
+- **Setiap baris berisi semua kolom.** Baris yang kolomnya kurang ditolak, tidak
+  dianggap "tidak tersedia": sel kosong harus tetap ada (`1000,,780,20`).
 - **Angka yang tidak ada di dokumen sumber tidak boleh ditebak.** Untuk suara
   partai dan paslon, hapus barisnya; kekosongan itu akan terlihat di laporan
   kelengkapan (T3.5). Untuk partisipasi, biarkan selnya kosong.
@@ -32,8 +35,9 @@ staging maupun produksi.
   yang sama.
 
 Nilai `election_type`: `presidential`, `legislative_dpr`,
-`legislative_dprd_province`. Nilai `data_status`: `official`, `unofficial`,
-`internal_aggregate`.
+`legislative_dprd_province`. Nilai `data_status`: `official` (rekapitulasi KPU)
+atau `unofficial` (misalnya Sirekap). `internal_aggregate` ditolak: status itu
+untuk agregat media dan survei, bukan hasil pemilu.
 
 ## 1. Suara partai (DPR RI, DPRD Provinsi)
 

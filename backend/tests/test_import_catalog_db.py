@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.importer.catalog import load_catalog
 from app.importer.validator import validate_file
-from app.models.enums import ElectionType, RegionLevel
+from app.models.enums import ElectionType
 from tests.import_fixtures import isi_referensi_fiktif, suara_partai, suara_paslon, tulis_csv
 
 pytestmark = pytest.mark.integration
@@ -40,11 +40,11 @@ async def test_katalog_wilayah_mengikuti_masa_berlaku(
     await isi_referensi_fiktif(session, tmp_path)
     catalog = await load_catalog(session)
 
-    assert catalog.regions[DPR_2019]["00"] is RegionLevel.PROVINCE
-    assert catalog.regions[DPR_2019]["00.01.01"] is RegionLevel.DISTRICT
+    assert {"00", "00.01", "00.01.01"} <= catalog.regions[DPR_2019]
     assert "00.01.02" not in catalog.regions[DPR_2019]
     assert "00.01.01" not in catalog.regions[DPR_2024]
-    assert catalog.regions[DPR_2024]["00.01.02"] is RegionLevel.DISTRICT
+    assert "00.01.02" in catalog.regions[DPR_2024]
+    assert not catalog.ambiguous_regions[DPR_2024]
 
 
 async def test_validasi_berkas_terhadap_database(session: AsyncSession, tmp_path: Path) -> None:
