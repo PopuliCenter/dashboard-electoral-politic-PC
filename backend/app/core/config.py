@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Daftar dipisah koma, bukan JSON, supaya mudah ditulis di .env
     cors_origins: str = "http://localhost:3000"
 
+    # Folder data/reference di dalam kontainer api (di-mount read-only).
+    reference_data_dir: str = "/data/reference"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

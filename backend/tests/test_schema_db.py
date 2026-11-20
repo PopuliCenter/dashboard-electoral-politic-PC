@@ -5,17 +5,13 @@ di-rollback, sesuai aturan data 2.
 """
 
 import uuid
-from collections.abc import AsyncGenerator
 from datetime import date
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.models import (
     Base,
     DatasetVersion,
@@ -35,33 +31,6 @@ from app.models.enums import (
 )
 
 pytestmark = pytest.mark.integration
-
-
-@pytest_asyncio.fixture
-async def session() -> AsyncGenerator[AsyncSession, None]:
-    """Sesi yang selalu di-rollback, jadi database uji tidak pernah berubah.
-
-    Engine dibuat baru per test dengan NullPool: pytest-asyncio memakai event
-    loop berbeda tiap test, dan koneksi asyncpg dari loop sebelumnya tidak bisa
-    dipakai ulang.
-    """
-    engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
-    try:
-        connection = await engine.connect()
-    except (OSError, SQLAlchemyError) as exc:
-        await engine.dispose()
-        pytest.skip(f"database tidak tersedia: {type(exc).__name__}")
-
-    transaction = await connection.begin()
-    async_session = AsyncSession(bind=connection, expire_on_commit=False)
-    try:
-        yield async_session
-    finally:
-        await async_session.close()
-        if transaction.is_active:
-            await transaction.rollback()
-        await connection.close()
-        await engine.dispose()
 
 
 async def test_semua_tabel_inti_sudah_dimigrasi(session: AsyncSession) -> None:
@@ -95,6 +64,13 @@ async def test_indeks_gist_terpasang_pada_geometri(session: AsyncSession) -> Non
     assert "gist" in indeks.lower()
 
 
+# Tahun dan nomor urut fiktif. Database pengembangan berisi data referensi asli
+# hasil seed T2.5 (kontestasi 2019 dan 2024, nomor urut partai 1 sampai 24), jadi
+# data uji harus memakai nilai yang mustahil bentrok dengan data asli.
+TAHUN_UJI = 2099
+NOMOR_URUT_UJI = 901
+
+
 async def _bibit_fiktif(session: AsyncSession) -> tuple[Region, Election, Party, DatasetVersion]:
     """Satu set data uji yang jelas fiktif."""
     sumber = DataSource(
@@ -119,15 +95,17 @@ async def _bibit_fiktif(session: AsyncSession) -> tuple[Region, Election, Party,
         valid_from=date(2019, 1, 1),
     )
     kontestasi = Election(
-        election_name="Pemilu Uji 2019",
+        election_name=f"Pemilu Uji {TAHUN_UJI}",
         election_type=ElectionType.LEGISLATIVE_DPR,
-        election_year=2019,
+        election_year=TAHUN_UJI,
     )
     partai = Party(
         party_code=f"UJI-{uuid.uuid4().hex[:6]}",
         party_name="Partai A",
         contested_2019=True,
         contested_2024=True,
+        ballot_number_2019=NOMOR_URUT_UJI,
+        ballot_number_2024=NOMOR_URUT_UJI,
     )
     session.add_all([versi, wilayah, kontestasi, partai])
     await session.flush()
@@ -227,10 +205,75 @@ async def test_kontestasi_tidak_boleh_kembar(session: AsyncSession) -> None:
     await _bibit_fiktif(session)
     session.add(
         Election(
-            election_name="Pemilu Uji 2019 (duplikat)",
+            election_name=f"Pemilu Uji {TAHUN_UJI} (duplikat)",
             election_type=ElectionType.LEGISLATIVE_DPR,
-            election_year=2019,
+            election_year=TAHUN_UJI,
         )
     )
     with pytest.raises(IntegrityError):
         await session.flush()
+
+
+def _partai_uji(**kolom: object) -> Party:
+    nilai: dict[str, object] = {
+        "party_code": f"UJI-{uuid.uuid4().hex[:6]}",
+        "party_name": f"Partai Uji {uuid.uuid4().hex[:4]}",
+    }
+    nilai.update(kolom)
+    return Party(**nilai)
+
+
+@pytest.mark.parametrize(
+    "kolom",
+    [
+        pytest.param(
+            {"contested_2019": True, "ballot_number_2019": None},
+            id="ikut-2019-tanpa-nomor-urut",
+        ),
+        pytest.param(
+            {"contested_2024": True, "ballot_number_2024": 902, "ballot_number_2019": 902},
+            id="tidak-ikut-2019-tetapi-punya-nomor-urut-2019",
+        ),
+        pytest.param({"contested_2019": True, "ballot_number_2019": 0}, id="nomor-urut-nol"),
+        pytest.param({"contested_2024": True, "ballot_number_2024": -3}, id="nomor-urut-negatif"),
+    ],
+)
+async def test_nomor_urut_harus_sesuai_keikutsertaan(
+    session: AsyncSession, kolom: dict[str, object]
+) -> None:
+    """CHECK ini ditulis tangan di migrasi; autogenerate tidak bisa mendeteksinya."""
+    session.add(_partai_uji(**kolom))
+    with pytest.raises(IntegrityError):
+        await session.flush()
+
+
+async def test_nomor_urut_unik_per_tahun(session: AsyncSession) -> None:
+    session.add(_partai_uji(contested_2019=True, ballot_number_2019=903))
+    await session.flush()
+    session.add(_partai_uji(contested_2019=True, ballot_number_2019=903))
+    with pytest.raises(IntegrityError):
+        await session.flush()
+
+
+async def test_nomor_urut_sama_boleh_di_tahun_berbeda(session: AsyncSession) -> None:
+    """Nomor 904 di 2019 dan nomor 904 di 2024 adalah dua hal yang tidak berhubungan."""
+    session.add(_partai_uji(contested_2019=True, ballot_number_2019=904))
+    session.add(_partai_uji(contested_2024=True, ballot_number_2024=904))
+    await session.flush()
+
+
+async def test_penukaran_nomor_urut_lolos_bila_keunikan_ditunda(session: AsyncSession) -> None:
+    """Koreksi yang menukar nomor urut dua partai harus bisa dalam satu transaksi."""
+    a = _partai_uji(contested_2019=True, ballot_number_2019=905)
+    b = _partai_uji(contested_2019=True, ballot_number_2019=906)
+    session.add_all([a, b])
+    await session.flush()
+
+    await session.execute(text("SET CONSTRAINTS uq_parties_ballot_number_2019 DEFERRED"))
+    a.ballot_number_2019 = 906
+    await session.flush()
+    b.ballot_number_2019 = 905
+    await session.flush()
+    await session.execute(text("SET CONSTRAINTS uq_parties_ballot_number_2019 IMMEDIATE"))
+
+    assert (a.ballot_number_2019, b.ballot_number_2019) == (906, 905)

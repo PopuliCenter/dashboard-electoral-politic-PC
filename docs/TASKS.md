@@ -28,7 +28,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [ ] T2.2 Skrip impor wilayah + geometri; uji: 27 kab/kota, setiap kecamatan punya induk dan geometri valid (`ST_IsValid`).
 - [ ] T2.3 Tabel `region_crosswalk` 2019→2024 dan skrip pengisiannya; uji: setiap kecamatan 2019 terpetakan atau ditandai eksplisit.
 - [ ] T2.4 Bangun vector tiles (tippecanoe → PMTiles) untuk kab/kota dan kecamatan; simpan di `data/tiles/`.
-- [ ] T2.5 Seed `parties` dan `elections` (6 kontestasi: 3 jenis × 2 tahun); tandai partai yang hanya ikut salah satu pemilu.
+- [x] T2.5 Seed `parties` dan `elections` (6 kontestasi: 3 jenis × 2 tahun); tandai partai yang hanya ikut salah satu pemilu. **20 November 2026:** 20 partai, 6 kontestasi, 5 paslon; seed idempoten dan tercatat di `audit_logs`, 78 test lolos. **Data menunggu verifikasi peneliti** (`verified_by` kosong; produksi menolak).
 
 ## Tahap 3 — Data elektoral (minggu 6–9)
 

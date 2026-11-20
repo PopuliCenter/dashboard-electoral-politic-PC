@@ -39,6 +39,13 @@ class Party(Base, UUIDPrimaryKey, Timestamps):
     Warna partai TIDAK disimpan di sini: diambil dari konfigurasi (lihat T4.5).
     `contested_2019` dan `contested_2024` menentukan partai mana yang boleh
     dihitung swing-nya dan mana yang diberi label "baru" (aturan data 4).
+
+    `ballot_number_<tahun>` adalah nomor urut resmi KPU. Dokumen rekapitulasi
+    menyusun partai menurut nomor urut, jadi ekstraktor T3.2 mencocokkan lewat
+    nomor ini, bukan lewat nama yang ejaannya berbeda antar dokumen dan bisa
+    berganti antar pemilu. Nomor ada jika dan hanya jika partai ikut pada tahun
+    itu; keunikannya per tahun bisa ditunda sampai akhir transaksi supaya koreksi
+    yang menukar dua nomor tidak tertolak di tengah jalan.
     """
 
     __tablename__ = "parties"
@@ -48,9 +55,33 @@ class Party(Base, UUIDPrimaryKey, Timestamps):
     party_abbreviation: Mapped[str | None] = mapped_column(String(30), nullable=True)
     contested_2019: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     contested_2024: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ballot_number_2019: Mapped[int | None] = mapped_column(nullable=True)
+    ballot_number_2024: Mapped[int | None] = mapped_column(nullable=True)
 
     __table_args__ = (
         CheckConstraint("contested_2019 OR contested_2024", name="partai_ikut_minimal_satu_pemilu"),
+        CheckConstraint(
+            "(contested_2019 AND ballot_number_2019 IS NOT NULL AND ballot_number_2019 > 0) OR "
+            "(NOT contested_2019 AND ballot_number_2019 IS NULL)",
+            name="nomor_urut_2019_sesuai_keikutsertaan",
+        ),
+        CheckConstraint(
+            "(contested_2024 AND ballot_number_2024 IS NOT NULL AND ballot_number_2024 > 0) OR "
+            "(NOT contested_2024 AND ballot_number_2024 IS NULL)",
+            name="nomor_urut_2024_sesuai_keikutsertaan",
+        ),
+        UniqueConstraint(
+            "ballot_number_2019",
+            name="uq_parties_ballot_number_2019",
+            deferrable=True,
+            initially="IMMEDIATE",
+        ),
+        UniqueConstraint(
+            "ballot_number_2024",
+            name="uq_parties_ballot_number_2024",
+            deferrable=True,
+            initially="IMMEDIATE",
+        ),
     )
 
 

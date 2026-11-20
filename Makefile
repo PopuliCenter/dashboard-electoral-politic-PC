@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN_API := $(COMPOSE) run --rm --no-deps api sh -lc
 RUN_WEB := $(COMPOSE) run --rm --no-deps web sh -lc
 
-.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision shell-api shell-db reset
+.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry shell-api shell-db reset
 
 help:
 	@echo "up              jalankan db, api, web"
@@ -17,6 +17,8 @@ help:
 	@echo "test            pytest backend saja"
 	@echo "migrate         alembic upgrade head"
 	@echo "revision m=...  buat migrasi baru (autogenerate)"
+	@echo "seed            isi kontestasi, paslon, partai dari data/reference"
+	@echo "seed-dry        validasi dan tampilkan perubahan seed tanpa menulis"
 
 up:
 	$(COMPOSE) up -d
@@ -50,6 +52,12 @@ test:
 
 migrate:
 	$(COMPOSE) run --rm api alembic upgrade head
+
+seed:
+	$(COMPOSE) run --rm api python -m app.seed
+
+seed-dry:
+	$(COMPOSE) run --rm api python -m app.seed --dry-run
 
 revision:
 	@test -n "$(m)" || (echo "pakai: make revision m=\"pesan migrasi\"" && exit 1)
