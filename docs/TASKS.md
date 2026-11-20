@@ -54,7 +54,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [x] T5.1 Login, sesi aman, hashing password, dua peran (Admin, Peneliti). **20 November 2026:** scrypt (pustaka standar), sesi server-side dengan cookie HttpOnly/SameSite=Lax/Secure, penguncian akun, audit login, pemeriksaan Origin; semua endpoint data wajib login; CLI `make users`; halaman `/login`. 269 test lolos. Belum ada antarmuka pengelolaan pengguna di web (sementara lewat CLI).
 - [ ] T5.2 Antarmuka impor: unggah CSV/XLSX → hasil validasi → setujui → promosi.
 - [x] T5.3 Halaman metadata sumber dan riwayat versi dataset. **20 November 2026:** API `/sources`, `/sources/{id}`, `/datasets`, `/datasets/{nama}` (wajib login) dengan metadata SDD 12.4, versi yang berlaku, "digantikan oleh", dan kejadian dari `audit_logs`; halaman `/data`. 305 test lolos. Halaman riwayat per dataset di web belum ada (datanya sudah tersedia di API).
-- [ ] T5.4 Ekspor CSV/XLSX dari peta dan halaman partai, menyertakan sumber dan status data.
+- [x] T5.4 Ekspor CSV/XLSX dari peta dan halaman partai, menyertakan sumber dan status data. **20 November 2026:** `/elections/{id}/results/export`, `/elections/compare/export`, `/parties/{id}/results/export` (`format=csv|xlsx`, wajib login, tercatat di `audit_logs`); openpyxl 3.1.5. 313 test lolos. Tombol unduh menyusul bersama halaman peta (T4.3) dan partai (T4.4); helper `exportUrl` sudah ada.
 
 ## Tahap 6 — Operasi (minggu 16–17)
 

@@ -142,6 +142,23 @@ export async function fetchAuthed<T>(path: string, cookieHeader: string): Promis
   }
 }
 
+/**
+ * URL unduhan ekspor (T5.4) untuk tautan di peta dan halaman partai. Dibuka
+ * langsung oleh peramban, jadi cookie sesi ikut terkirim. Contoh:
+ * exportUrl(`/elections/${id}/results/export`, { level: "district" }, "xlsx").
+ */
+export function exportUrl(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  format: "csv" | "xlsx",
+): string {
+  const query = new URLSearchParams({ format });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  return `${apiBaseUrl}${path}?${query.toString()}`;
+}
+
 /** Tidak pernah melempar: halaman harus tetap tampil walau API mati. */
 export async function fetchHealth(): Promise<HealthResult> {
   try {
