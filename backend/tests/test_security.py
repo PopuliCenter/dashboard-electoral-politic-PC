@@ -70,6 +70,28 @@ async def test_hash_tidak_menahan_event_loop() -> None:
     assert jeda_terbesar < 0.05, f"event loop tertahan {jeda_terbesar:.3f} detik"
 
 
+async def test_banjir_login_tidak_menghabiskan_thread_bawaan() -> None:
+    """Hash yang mengantre menunggu di event loop, bukan memegang thread bawaan.
+
+    FastAPI menjalankan dependensi sinkron (misalnya get_settings) di pool thread
+    bawaan anyio (40 thread). Delapan puluh verifikasi serentak tidak boleh
+    membuat pekerjaan sinkron lain menunggu giliran thread.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    stored = hash_password(PASSWORD)
+    verifikasi = [asyncio.create_task(verify_password_async(PASSWORD, stored)) for _ in range(80)]
+    await asyncio.sleep(0.05)  # biarkan antrean terbentuk
+    loop = asyncio.get_running_loop()
+    mulai = loop.time()
+    assert await run_in_threadpool(lambda: 1) == 1
+    lama = loop.time() - mulai
+    for tugas in verifikasi:
+        tugas.cancel()
+    await asyncio.gather(*verifikasi, return_exceptions=True)
+    assert lama < 0.2, f"pekerjaan sinkron menunggu thread {lama:.3f} detik"
+
+
 async def test_hash_async_sama_dengan_sinkron() -> None:
     stored = await hash_password_async(PASSWORD)
     assert verify_password(PASSWORD, stored)

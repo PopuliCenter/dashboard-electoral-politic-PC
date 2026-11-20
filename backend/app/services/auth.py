@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import case, delete, select, update
+from sqlalchemy import case, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +57,9 @@ def _now() -> datetime:
 # penguncian per akun+IP berperilaku seperti per akun saja.
 UNKNOWN_IP = "unknown"
 
+# Penghitung gagal yang tidak tersentuh selama ini (dan tidak terkunci) dibuang.
+STALE_THROTTLE_AGE = timedelta(days=1)
+
 
 async def _locked_until(
     session: AsyncSession, user_id: uuid.UUID, ip: str, now: datetime
@@ -78,6 +81,15 @@ async def _register_failure(
     paralel tidak bisa membaca hitungan yang sama lalu sama-sama lolos ambang.
     Penguncian yang sudah kedaluwarsa memulai hitungan dari 1 lagi.
     """
+    # Bersihkan penghitung basi akun ini (tidak terkunci, tak tersentuh sehari),
+    # supaya percobaan dari banyak IP tidak menumpuk baris tanpa batas.
+    await session.execute(
+        delete(LoginThrottle).where(
+            LoginThrottle.user_id == user_id,
+            LoginThrottle.updated_at < now - STALE_THROTTLE_AGE,
+            or_(LoginThrottle.locked_until.is_(None), LoginThrottle.locked_until < now),
+        )
+    )
     table = LoginThrottle.__table__
     base = insert(LoginThrottle).values(
         user_id=user_id, ip_address=ip, failed_count=1, locked_until=None, updated_at=now

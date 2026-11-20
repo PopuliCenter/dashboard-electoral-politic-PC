@@ -8,7 +8,7 @@ dihapus di akhir test (CASCADE menghapus penghitungnya).
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select
@@ -77,3 +77,22 @@ async def test_gagal_paralel_dari_satu_ip_tetap_mencapai_ambang(
             )
         )
     assert throttle is not None and throttle.locked_until is not None
+
+
+async def test_penghitung_basi_dibersihkan(engine: AsyncEngine, user_id: uuid.UUID) -> None:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    async with AsyncSession(engine) as s:
+        await auth._register_failure(s, settings, user_id, "10.8.8.1", now - timedelta(days=2))
+        await s.commit()
+    async with AsyncSession(engine) as s:
+        await auth._register_failure(s, settings, user_id, "10.8.8.2", now)
+        await s.commit()
+        ips = set(
+            (
+                await s.scalars(
+                    select(LoginThrottle.ip_address).where(LoginThrottle.user_id == user_id)
+                )
+            ).all()
+        )
+    assert ips == {"10.8.8.2"}

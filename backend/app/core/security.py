@@ -9,13 +9,14 @@ Parameter ikut tersimpan, jadi parameter bisa dinaikkan kelak tanpa membuat
 hash lama tidak terbaca; `needs_rehash` memberi tahu kapan hash perlu diganti.
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import secrets
-import threading
+import weakref
 
-from starlette.concurrency import run_in_threadpool
+from anyio import CapacityLimiter, to_thread
 
 # n=2**15, r=8: sekitar 32 MiB memori dan ~100 ms per hash (diukur di kontainer
 # api). Cukup lambat untuk menyulitkan tebakan massal; karena itu hash TIDAK
@@ -99,28 +100,34 @@ def hash_session_token(token: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Versi async: hash di thread, dengan jumlah serentak dibatasi
+# Versi async: hash di thread khusus, antrean di event loop
 # --------------------------------------------------------------------------- #
 
-# Tiap hash ~32 MiB; empat serentak = ~128 MiB, aman untuk server 8 GB. Antrean
-# menunggu di thread pool, bukan di event loop, jadi endpoint lain tetap jalan.
+# Tiap hash ~32 MiB; empat serentak = ~128 MiB, aman untuk server 8 GB.
 MAX_CONCURRENT_HASHES = 4
-_HASH_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_HASHES)
+
+# Limiter KHUSUS hash, satu per event loop. Permintaan yang mengantre menunggu
+# secara async di event loop, tidak memegang thread dari pool bawaan anyio yang
+# juga dipakai FastAPI untuk dependensi sinkron. Dengan semaphore di dalam thread
+# (versi sebelumnya), banjir login menghabiskan pool bawaan dan memperlambat
+# semua permintaan lain.
+_LIMITERS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, CapacityLimiter]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
-def _verify_limited(password: str, stored: str) -> bool:
-    with _HASH_SLOTS:
-        return verify_password(password, stored)
-
-
-def _hash_limited(password: str) -> str:
-    with _HASH_SLOTS:
-        return hash_password(password)
+def _hash_limiter() -> CapacityLimiter:
+    loop = asyncio.get_running_loop()
+    limiter = _LIMITERS.get(loop)
+    if limiter is None:
+        limiter = CapacityLimiter(MAX_CONCURRENT_HASHES)
+        _LIMITERS[loop] = limiter
+    return limiter
 
 
 async def verify_password_async(password: str, stored: str) -> bool:
-    return await run_in_threadpool(_verify_limited, password, stored)
+    return await to_thread.run_sync(verify_password, password, stored, limiter=_hash_limiter())
 
 
 async def hash_password_async(password: str) -> str:
-    return await run_in_threadpool(_hash_limited, password)
+    return await to_thread.run_sync(hash_password, password, limiter=_hash_limiter())
