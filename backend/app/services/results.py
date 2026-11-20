@@ -47,11 +47,15 @@ from app.services.analytics import (
     MatchedUnit,
     SwingInput,
     Unavailable,
+    aggregate,
+    derive_parent_units,
     matched_units,
     party_swing,
     rank,
+    restrict_units,
     turnout,
     vote_share,
+    weakest_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,10 +106,10 @@ def party_out(party: Party) -> PartyOut:
     )
 
 
-def _as_percentage(value: float | Unavailable) -> Percentage:
+def _as_percentage(value: float | Unavailable, status: DataStatus | None = None) -> Percentage:
     if isinstance(value, Unavailable):
         return Percentage(value=None, unavailable=value.value)
-    return Percentage(value=value)
+    return Percentage(value=value, data_status=status)
 
 
 def _inconsistent(context: str, exc: InconsistentDataError) -> Percentage:
@@ -114,16 +118,23 @@ def _inconsistent(context: str, exc: InconsistentDataError) -> Percentage:
     return Percentage(value=None, unavailable=Unavailable.INCONSISTENT.value)
 
 
-def _share(votes: int | None, valid_votes: int | None, context: str) -> Percentage:
+def _share(
+    votes: int | None,
+    valid_votes: int | None,
+    statuses: Iterable[DataStatus | None],
+    context: str,
+) -> Percentage:
+    """Vote share dengan status terlemah dari pembilang dan penyebutnya."""
     try:
-        return _as_percentage(vote_share(votes, valid_votes))
+        return _as_percentage(vote_share(votes, valid_votes), weakest_status(statuses))
     except InconsistentDataError as exc:
         return _inconsistent(context, exc)
 
 
-def _turnout_pct(turned_out: int | None, registered: int | None, context: str) -> Percentage:
+def _turnout_pct(row: RegionTurnout, context: str) -> Percentage:
     try:
-        return _as_percentage(turnout(turned_out, registered))
+        value = turnout(row.voters_turned_out, row.registered_voters)
+        return _as_percentage(value, row.data_status)
     except InconsistentDataError as exc:
         return _inconsistent(context, exc)
 
@@ -143,6 +154,12 @@ async def _sources(session: AsyncSession, ids: Iterable[uuid.UUID | None]) -> li
 # Wilayah
 # --------------------------------------------------------------------------- #
 
+# Tingkat induk langsung untuk drill-down.
+PARENT_LEVEL = {
+    RegionLevel.REGENCY: RegionLevel.PROVINCE,
+    RegionLevel.DISTRICT: RegionLevel.REGENCY,
+}
+
 
 def _valid_on(election: Election) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     day = election.election_date
@@ -152,14 +169,21 @@ def _valid_on(election: Election) -> tuple[ColumnElement[bool], ColumnElement[bo
     )
 
 
+def require_dated(election: Election) -> None:
+    if election.election_date is None:
+        raise ValueError(
+            f"kontestasi {election.election_type.value} {election.election_year} belum punya "
+            "tanggal pemungutan suara, jadi wilayah yang berlaku tidak bisa ditentukan"
+        )
+
+
 async def regions_for(
     session: AsyncSession,
     election: Election,
     level: RegionLevel,
     parent_id: uuid.UUID | None = None,
 ) -> list[Region]:
-    if election.election_date is None:
-        return []
+    require_dated(election)
     query = select(Region).where(Region.region_level == level, *_valid_on(election))
     if parent_id is not None:
         query = query.where(Region.parent_id == parent_id)
@@ -171,6 +195,18 @@ async def get_election(session: AsyncSession, election_id: uuid.UUID) -> Electio
     if election is None:
         raise NotFoundError(f"kontestasi {election_id} tidak ada")
     return election
+
+
+async def _check_parent(session: AsyncSession, parent_id: uuid.UUID, level: RegionLevel) -> None:
+    parent = await session.get(Region, parent_id)
+    if parent is None:
+        raise NotFoundError(f"wilayah induk {parent_id} tidak ada")
+    expected = PARENT_LEVEL.get(level)
+    if parent.region_level is not expected:
+        raise ValueError(
+            f"wilayah {parent.region_code} bertingkat {parent.region_level.value}, bukan induk "
+            f"langsung tingkat {level.value}"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -210,9 +246,15 @@ async def _participants(session: AsyncSession, election: Election) -> dict[str, 
 
 
 async def _votes(
-    session: AsyncSession, election: Election, region_ids: list[uuid.UUID]
+    session: AsyncSession,
+    election: Election,
+    region_ids: list[uuid.UUID],
+    party_id: uuid.UUID | None = None,
 ) -> dict[uuid.UUID, dict[str, _Vote]]:
+    """Suara per wilayah per peserta. `party_id` membatasi ke satu partai."""
     votes: dict[uuid.UUID, dict[str, _Vote]] = {}
+    if not region_ids:
+        return votes
     if election.election_type is ElectionType.PRESIDENTIAL:
         rows = await session.execute(
             select(
@@ -231,7 +273,7 @@ async def _votes(
         for region_id, number, count, status, source in rows.tuples():
             votes.setdefault(region_id, {})[str(number)] = _Vote(count, status, source)
         return votes
-    party_rows = await session.execute(
+    query = (
         select(
             ElectionResult.region_id,
             Party.party_code,
@@ -242,7 +284,9 @@ async def _votes(
         .join(Party, ElectionResult.party_id == Party.id)
         .where(ElectionResult.election_id == election.id, ElectionResult.region_id.in_(region_ids))
     )
-    for region_id, code, count, status, source in party_rows.tuples():
+    if party_id is not None:
+        query = query.where(ElectionResult.party_id == party_id)
+    for region_id, code, count, status, source in (await session.execute(query)).tuples():
         votes.setdefault(region_id, {})[code] = _Vote(count, status, source)
     return votes
 
@@ -250,6 +294,8 @@ async def _votes(
 async def _turnouts(
     session: AsyncSession, election: Election, region_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, RegionTurnout]:
+    if not region_ids:
+        return {}
     rows = (
         await session.scalars(
             select(RegionTurnout).where(
@@ -276,7 +322,7 @@ def _turnout_out(row: RegionTurnout | None, context: str) -> Turnout:
         voters_turned_out=row.voters_turned_out,
         valid_votes=row.valid_votes,
         invalid_votes=row.invalid_votes,
-        turnout=_turnout_pct(row.voters_turned_out, row.registered_voters, context),
+        turnout=_turnout_pct(row, context),
         data_status=row.data_status,
         source_id=row.source_id,
     )
@@ -289,7 +335,12 @@ def _leader(votes: dict[str, _Vote], participants: dict[str, str]) -> Leader:
         return Leader(keys=[], tie=False, margin=None, unavailable=Unavailable.INCONSISTENT.value)
     if isinstance(ranking, Unavailable):
         return Leader(keys=[], tie=False, margin=None, unavailable=ranking.value)
-    return Leader(keys=list(ranking.leaders), tie=ranking.tie, margin=ranking.margin)
+    return Leader(
+        keys=list(ranking.leaders),
+        tie=ranking.tie,
+        margin=ranking.margin,
+        data_status=weakest_status(v.status for k, v in votes.items() if k in participants),
+    )
 
 
 async def election_results(
@@ -298,6 +349,9 @@ async def election_results(
     level: RegionLevel,
     parent_id: uuid.UUID | None = None,
 ) -> ElectionResultsOut:
+    require_dated(election)
+    if parent_id is not None:
+        await _check_parent(session, parent_id, level)
     regions = await regions_for(session, election, level, parent_id)
     ids = [r.id for r in regions]
     participants = await _participants(session, election)
@@ -310,6 +364,7 @@ async def election_results(
         region_votes = votes.get(region.id, {})
         turnout_row = turnouts.get(region.id)
         valid = turnout_row.valid_votes if turnout_row else None
+        valid_status = turnout_row.data_status if turnout_row else None
         context = f"{election.election_type.value} {election.election_year} {region.region_code}"
         items = []
         for key, label in participants.items():
@@ -319,7 +374,12 @@ async def election_results(
                     key=key,
                     label=label,
                     vote_count=vote.count if vote else None,
-                    vote_share=_share(vote.count if vote else None, valid, f"{context} {key}"),
+                    vote_share=_share(
+                        vote.count if vote else None,
+                        valid,
+                        (vote.status if vote else None, valid_status),
+                        f"{context} {key}",
+                    ),
                     data_status=vote.status if vote else None,
                     source_id=vote.source_id if vote else None,
                 )
@@ -362,30 +422,73 @@ async def _election_by(session: AsyncSession, election_type: ElectionType, year:
     return election
 
 
-async def _party_area_votes(
+@dataclass
+class _PartyArea:
+    """Suara satu partai dan suara sah di satu kontestasi, per wilayah."""
+
+    data: dict[uuid.UUID, AreaVotes]
+    votes: dict[uuid.UUID, _Vote]
+    statuses: dict[uuid.UUID, set[DataStatus]]
+    sources: set[uuid.UUID]
+
+
+async def _party_area(
     session: AsyncSession, election: Election, party: Party, regions: list[Region]
-) -> tuple[dict[uuid.UUID, AreaVotes], dict[uuid.UUID, set[DataStatus]], set[uuid.UUID]]:
+) -> _PartyArea:
     ids = [r.id for r in regions]
-    votes = (await _votes(session, election, ids)) if ids else {}
-    turnouts = (await _turnouts(session, election, ids)) if ids else {}
-    data: dict[uuid.UUID, AreaVotes] = {}
-    statuses: dict[uuid.UUID, set[DataStatus]] = {}
-    sources: set[uuid.UUID] = set()
+    votes = await _votes(session, election, ids, party_id=party.id)
+    turnouts = await _turnouts(session, election, ids)
+    area = _PartyArea({}, {}, {}, set())
     for region_id in ids:
         vote = votes.get(region_id, {}).get(party.party_code)
         row = turnouts.get(region_id)
-        data[region_id] = AreaVotes(
+        area.data[region_id] = AreaVotes(
             party_votes=vote.count if vote else None,
             valid_votes=row.valid_votes if row else None,
         )
-        region_statuses = statuses.setdefault(region_id, set())
+        region_statuses = area.statuses.setdefault(region_id, set())
         if vote:
+            area.votes[region_id] = vote
             region_statuses.add(vote.status)
-            sources.add(vote.source_id)
+            area.sources.add(vote.source_id)
         if row:
             region_statuses.add(row.data_status)
-            sources.add(row.source_id)
-    return data, statuses, sources
+            area.sources.add(row.source_id)
+    return area
+
+
+async def _district_units(
+    session: AsyncSession,
+    from_year: int,
+    to_year: int,
+    old_regions: list[Region],
+    new_regions: list[Region],
+) -> tuple[list[MatchedUnit[uuid.UUID]], dict[uuid.UUID, Region]]:
+    """Unit padanan tingkat kecamatan yang semua wilayahnya berlaku.
+
+    Baris padanan dibaca utuh, termasuk yang ujungnya tidak berlaku, supaya unit
+    yang menyentuh wilayah tak berlaku ikut terlihat dan ditolak seluruhnya.
+    """
+    old_ids = {r.id for r in old_regions}
+    new_ids = {r.id for r in new_regions}
+    pairs = (
+        (
+            await session.execute(
+                select(RegionCrosswalk.from_region_id, RegionCrosswalk.to_region_id).where(
+                    RegionCrosswalk.from_year == from_year,
+                    RegionCrosswalk.to_year == to_year,
+                    or_(
+                        RegionCrosswalk.from_region_id.in_(old_ids),
+                        RegionCrosswalk.to_region_id.in_(new_ids),
+                    ),
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+    units, _broken = restrict_units(matched_units(pairs), old_ids, new_ids)
+    return units, {r.id: r for r in [*old_regions, *new_regions]}
 
 
 async def compare(
@@ -399,6 +502,8 @@ async def compare(
     if election_type is ElectionType.PRESIDENTIAL:
         # Paslon berbeda tiap pemilu; swing partai tidak berlaku untuk Pilpres.
         raise ValueError("perbandingan swing partai hanya untuk DPR RI dan DPRD Provinsi")
+    if level not in (RegionLevel.DISTRICT, RegionLevel.REGENCY):
+        raise ValueError("swing tersedia untuk tingkat kecamatan dan kab/kota")
     if from_year >= to_year:
         raise ValueError("from_year harus sebelum to_year")
     party = await session.get(Party, party_id)
@@ -406,64 +511,69 @@ async def compare(
         raise NotFoundError(f"partai {party_id} tidak ada")
     old_election = await _election_by(session, election_type, from_year)
     new_election = await _election_by(session, election_type, to_year)
-    old_regions = await regions_for(session, old_election, level)
-    new_regions = await regions_for(session, new_election, level)
-    by_id = {r.id: r for r in [*old_regions, *new_regions]}
 
-    crosswalk = (
-        await session.execute(
-            select(RegionCrosswalk.from_region_id, RegionCrosswalk.to_region_id).where(
-                RegionCrosswalk.from_year == from_year,
-                RegionCrosswalk.to_year == to_year,
-                RegionCrosswalk.from_region_id.in_([r.id for r in old_regions]),
-                RegionCrosswalk.to_region_id.in_([r.id for r in new_regions]),
-            )
-        )
-    ).tuples()
-    units = matched_units(crosswalk)
+    old_districts = await regions_for(session, old_election, RegionLevel.DISTRICT)
+    new_districts = await regions_for(session, new_election, RegionLevel.DISTRICT)
+    district_units, by_id = await _district_units(
+        session, from_year, to_year, old_districts, new_districts
+    )
 
-    old_data, old_statuses, old_sources = await _party_area_votes(
-        session, old_election, party, old_regions
-    )
-    new_data, new_statuses, new_sources = await _party_area_votes(
-        session, new_election, party, new_regions
-    )
+    if level is RegionLevel.DISTRICT:
+        old_regions, new_regions, units = old_districts, new_districts, district_units
+    else:
+        # Unit kab/kota diturunkan dari unit kecamatan (keputusan pengguna);
+        # angkanya tetap dari baris tingkat kab/kota, bukan jumlah kecamatan.
+        old_regions = await regions_for(session, old_election, RegionLevel.REGENCY)
+        new_regions = await regions_for(session, new_election, RegionLevel.REGENCY)
+        by_id.update({r.id: r for r in [*old_regions, *new_regions]})
+        old_children: dict[uuid.UUID, list[uuid.UUID]] = {r.id: [] for r in old_regions}
+        new_children: dict[uuid.UUID, list[uuid.UUID]] = {r.id: [] for r in new_regions}
+        for d in old_districts:
+            if d.parent_id in old_children:
+                old_children[d.parent_id].append(d.id)
+        for d in new_districts:
+            if d.parent_id in new_children:
+                new_children[d.parent_id].append(d.id)
+        units = derive_parent_units(district_units, old_children, new_children).units
+
+    old = await _party_area(session, old_election, party, old_regions)
+    new = await _party_area(session, new_election, party, new_regions)
     contested_old = bool(getattr(party, f"contested_{from_year}", False))
     contested_new = bool(getattr(party, f"contested_{to_year}", False))
     swing_input = SwingInput(
-        election_type, election_type, contested_old, contested_new, old_data, new_data
+        election_type, election_type, contested_old, contested_new, old.data, new.data
     )
-    # Per unit, supaya satu unit berdata mustahil tidak menjatuhkan seluruh respons.
-    swings: dict[MatchedUnit[uuid.UUID], Percentage] = {}
-    for unit in units:
-        try:
-            swings[unit] = _as_percentage(party_swing(swing_input, [unit])[unit])
-        except InconsistentDataError as exc:
-            swings[unit] = _inconsistent(f"swing {party.party_code}", exc)
 
-    def share(regions: frozenset[uuid.UUID], data: dict[uuid.UUID, AreaVotes]) -> Percentage:
-        areas = [data.get(r) for r in regions]
-        if any(a is None or a.party_votes is None or a.valid_votes is None for a in areas):
-            reason = Unavailable.INCOMPLETE if len(regions) > 1 else Unavailable.NO_DATA
-            return Percentage(value=None, unavailable=reason.value)
-        party_total = sum(a.party_votes for a in areas if a and a.party_votes is not None)
-        valid_total = sum(a.valid_votes for a in areas if a and a.valid_votes is not None)
-        return _share(party_total, valid_total, party.party_code)
+    def side_status(regions: frozenset[uuid.UUID], area: _PartyArea) -> DataStatus | None:
+        return weakest_status(s for r in regions for s in area.statuses.get(r, set()))
+
+    def side_share(regions: frozenset[uuid.UUID], area: _PartyArea) -> Percentage:
+        totals = aggregate(regions, area.data)
+        if isinstance(totals, Unavailable):
+            return _as_percentage(totals)
+        return _share(
+            totals.party_votes,
+            totals.valid_votes,
+            [side_status(regions, area)],
+            f"{party.party_code} {sorted(by_id[r].region_code for r in regions)}",
+        )
 
     out_units: list[SwingUnit] = []
     for unit in sorted(units, key=lambda u: sorted(by_id[r].region_code for r in u.old_regions)):
-        value = swings[unit]
-        statuses: set[DataStatus] = set()
-        for region_id in unit.old_regions:
-            statuses |= old_statuses.get(region_id, set())
-        for region_id in unit.new_regions:
-            statuses |= new_statuses.get(region_id, set())
+        statuses = {s for r in unit.old_regions for s in old.statuses.get(r, set())} | {
+            s for r in unit.new_regions for s in new.statuses.get(r, set())
+        }
+        # Per unit, supaya satu unit berdata mustahil tidak menjatuhkan seluruh respons.
+        try:
+            value = _as_percentage(party_swing(swing_input, [unit])[unit], weakest_status(statuses))
+        except InconsistentDataError as exc:
+            value = _inconsistent(f"swing {party.party_code}", exc)
         out_units.append(
             SwingUnit(
                 old_region_codes=sorted(by_id[r].region_code for r in unit.old_regions),
                 new_region_codes=sorted(by_id[r].region_code for r in unit.new_regions),
-                old_share=share(unit.old_regions, old_data),
-                new_share=share(unit.new_regions, new_data),
+                old_share=side_share(unit.old_regions, old),
+                new_share=side_share(unit.new_regions, new),
                 swing=value,
                 data_statuses=sorted(statuses),
             )
@@ -484,7 +594,7 @@ async def compare(
         unmatched_new_region_codes=sorted(
             r.region_code for r in new_regions if r.id not in matched_new
         ),
-        sources=await _sources(session, old_sources | new_sources),
+        sources=await _sources(session, old.sources | new.sources),
     )
 
 
@@ -517,18 +627,20 @@ async def party_results(
     for election in elections:
         contested = bool(getattr(party, f"contested_{election.election_year}", False))
         regions = await regions_for(session, election, level)
-        data, _, sources = await _party_area_votes(session, election, party, regions)
-        votes = await _votes(session, election, [r.id for r in regions]) if regions else {}
-        source_ids |= sources
+        area = await _party_area(session, election, party, regions)
+        source_ids |= area.sources
         rows: list[PartyRegionResult] = []
         for region in regions:
-            vote = votes.get(region.id, {}).get(party.party_code)
-            area = data[region.id]
+            vote = area.votes.get(region.id)
+            numbers = area.data[region.id]
             if not contested:
                 share = Percentage(value=None, unavailable=Unavailable.NOT_CONTESTED.value)
             else:
                 share = _share(
-                    area.party_votes, area.valid_votes, f"{party.party_code} {region.region_code}"
+                    numbers.party_votes,
+                    numbers.valid_votes,
+                    area.statuses.get(region.id, set()),
+                    f"{party.party_code} {region.region_code}",
                 )
             rows.append(
                 PartyRegionResult(

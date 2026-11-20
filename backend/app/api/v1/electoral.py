@@ -155,9 +155,11 @@ async def election_results(
 ) -> ElectionResultsOut:
     try:
         election = await results.get_election(session, election_id)
+        return await results.election_results(session, election, level, parent_id)
     except NotFoundError as exc:
         raise _not_found(exc) from exc
-    return await results.election_results(session, election, level, parent_id)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
 
 
 # --------------------------------------------------------------------------- #

@@ -228,12 +228,18 @@ async def test_hasil_dpr_per_kecamatan(api: AsyncClient, session: AsyncSession) 
     kec = _region(body, "00.01.02")
     a = _item(kec, "UJI_A")
     assert a["vote_count"] == 300
-    assert a["vote_share"] == {"value": 75.0, "unavailable": None}
+    assert a["vote_share"] == {"value": 75.0, "unavailable": None, "data_status": "official"}
     assert a["data_status"] == "official" and a["source_id"]
     assert _item(kec, "UJI_C")["vote_share"]["value"] == 25.0
     # UJI_B tidak ikut 2024, jadi bukan peserta.
     assert {i["key"] for i in kec["results"]} == {"UJI_A", "UJI_C"}
-    assert kec["leader"] == {"keys": ["UJI_A"], "tie": False, "margin": 200, "unavailable": None}
+    assert kec["leader"] == {
+        "keys": ["UJI_A"],
+        "tie": False,
+        "margin": 200,
+        "unavailable": None,
+        "data_status": "official",
+    }
     assert kec["turnout"]["turnout"]["value"] == 80.0
     assert kec["data_statuses"] == ["official"]
     assert any(s["name"] == SUMBER.source_name for s in body["sources"])
@@ -245,7 +251,11 @@ async def test_peserta_tanpa_angka_tidak_ditaksir(api: AsyncClient, session: Asy
     kab = _region(body, "00.01")
     c = _item(kab, "UJI_C")
     assert c["vote_count"] is None
-    assert c["vote_share"] == {"value": None, "unavailable": "data tidak tersedia"}
+    assert c["vote_share"] == {
+        "value": None,
+        "unavailable": "data tidak tersedia",
+        "data_status": None,
+    }
     assert c["data_status"] is None
     assert kab["leader"]["unavailable"] == "data belum lengkap"
     assert kab["leader"]["keys"] == []
@@ -255,7 +265,13 @@ async def test_pilpres_seri_dan_tanpa_suara_sah(api: AsyncClient, session: Async
     eid = await _election_id(session, ElectionType.PRESIDENTIAL, 2024)
     body = (await api.get(f"{PREFIX}/elections/{eid}/results", params={"level": "district"})).json()
     kec = _region(body, "00.01.02")
-    assert kec["leader"] == {"keys": ["1", "2"], "tie": True, "margin": 0, "unavailable": None}
+    assert kec["leader"] == {
+        "keys": ["1", "2"],
+        "tie": True,
+        "margin": 0,
+        "unavailable": None,
+        "data_status": "official",
+    }
     assert _item(kec, "1")["vote_share"]["unavailable"] == "data tidak tersedia"
     assert kec["turnout"]["turnout"]["unavailable"] == "data tidak tersedia"
 
@@ -268,7 +284,8 @@ async def test_data_mustahil_tidak_menjatuhkan_halaman(
     assert response.status_code == 200
     a = _item(_region(response.json(), "00.01.02"), "UJI_A")
     assert a["vote_count"] == 300
-    assert a["vote_share"] == {"value": None, "unavailable": "data tidak konsisten"}
+    assert a["vote_share"]["value"] is None
+    assert a["vote_share"]["unavailable"] == "data tidak konsisten"
 
 
 async def test_drill_down_ke_turunan(api: AsyncClient, session: AsyncSession) -> None:
@@ -320,7 +337,8 @@ async def test_partai_baru_tidak_punya_swing(api: AsyncClient, session: AsyncSes
         )
     ).json()
     assert body["party"]["new_in_2024"] is True
-    assert body["units"][0]["swing"] == {"value": None, "unavailable": "baru"}
+    assert body["units"][0]["swing"]["value"] is None
+    assert body["units"][0]["swing"]["unavailable"] == "baru"
 
 
 async def test_perbandingan_pilpres_dan_partai_tidak_dikenal_ditolak(
@@ -367,3 +385,157 @@ async def test_hasil_partai_lintas_tahun(api: AsyncClient, session: AsyncSession
         r["vote_share"]["unavailable"] == "tidak ikut pemilu ini" for r in tahun_2024["regions"]
     )
     assert date.fromisoformat(tahun_2024["election"]["date"]).year == 2024
+
+
+# --------------------------------------------------------------------------- #
+# Review T4.1
+# --------------------------------------------------------------------------- #
+
+
+async def _swing(api: AsyncClient, session: AsyncSession, level: str) -> dict[str, Any]:
+    party = await _id(session, Party, Party.party_code, "UJI_A")
+    response = await api.get(
+        f"{PREFIX}/elections/compare",
+        params={"election_type": "legislative_dpr", "party_id": str(party), "level": level},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()  # type: ignore[no-any-return]
+
+
+async def test_status_turunan_mengikuti_bahan_terlemah(
+    api: AsyncClient, session: AsyncSession, tmp_path: Path
+) -> None:
+    """Suara resmi dibagi suara sah tidak resmi tidak boleh berlabel resmi."""
+    await _muat(
+        session,
+        tmp_path / "t-tidak-resmi.csv",
+        [partisipasi("00.01.02", sah="400", status="unofficial")],
+        "uji-partisipasi-dpr-2024",
+    )
+    eid = await _election_id(session, ElectionType.LEGISLATIVE_DPR, 2024)
+    body = (await api.get(f"{PREFIX}/elections/{eid}/results", params={"level": "district"})).json()
+    a = _item(_region(body, "00.01.02"), "UJI_A")
+    assert a["data_status"] == "official"  # suaranya sendiri resmi
+    assert a["vote_share"]["value"] == 75.0
+    assert a["vote_share"]["data_status"] == "unofficial"  # penyebutnya tidak
+
+    swing = (await _swing(api, session, "district"))["units"][0]
+    assert swing["swing"]["data_status"] == "unofficial"
+    assert swing["old_share"]["data_status"] == "official"
+
+
+async def test_unit_padanan_yang_terpotong_tidak_tampak_sah(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    """00.01.01 mekar ke 00.01.02 dan 00.01.04, tetapi 00.01.04 tidak berlaku di 2024."""
+    kab = await _id(session, Region, Region.region_code, "00.01")
+    pecahan = Region(
+        region_code="00.01.04",
+        region_name="Kecamatan Uji Keliru",
+        region_level="district",
+        parent_id=kab,
+        valid_from=date(2019, 1, 2),
+        valid_until=date(2023, 12, 31),
+    )
+    session.add(pecahan)
+    await session.flush()
+    session.add(
+        RegionCrosswalk(
+            from_region_id=await _id(session, Region, Region.region_code, "00.01.01"),
+            to_region_id=pecahan.id,
+            from_year=2019,
+            to_year=2024,
+            relation=CrosswalkRelation.SPLIT,
+        )
+    )
+    await session.flush()
+    body = await _swing(api, session, "district")
+    assert body["units"] == []
+    assert body["unmatched_old_region_codes"] == ["00.01.01"]
+    assert body["unmatched_new_region_codes"] == ["00.01.02"]
+
+
+async def test_swing_kabkota_diturunkan_dari_unit_kecamatan(
+    api: AsyncClient, session: AsyncSession, tmp_path: Path
+) -> None:
+    # Angka tingkat kab/kota 2019 (2024 sudah ada di fixture): 100 / 500 = 20%.
+    await _muat(
+        session,
+        tmp_path / "dpr2019-kab.csv",
+        [suara_partai("00.01", "UJI_A", "100", tahun="2019")],
+        "uji-dpr-2019-kab",
+    )
+    await _muat(
+        session,
+        tmp_path / "t2019-kab.csv",
+        [partisipasi("00.01", sah="500", tahun="2019")],
+        "uji-partisipasi-dpr-2019-kab",
+    )
+    body = await _swing(api, session, "regency")
+    (unit,) = body["units"]
+    assert (unit["old_region_codes"], unit["new_region_codes"]) == (["00.01"], ["00.01"])
+    # Angka dari baris kab/kota (75% di 2024), bukan jumlah kecamatan.
+    assert unit["old_share"]["value"] == 20.0
+    assert unit["new_share"]["value"] == 75.0
+    assert unit["swing"]["value"] == pytest.approx(55.0)
+
+
+async def test_kabkota_dengan_kecamatan_tak_terpadankan_belum_dipadankan(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    kab = await _id(session, Region, Region.region_code, "00.01")
+    session.add(
+        Region(
+            region_code="00.01.05",
+            region_name="Kecamatan Uji Tanpa Padanan",
+            region_level="district",
+            parent_id=kab,
+            valid_from=date(2019, 1, 2),
+        )
+    )
+    await session.flush()
+    body = await _swing(api, session, "regency")
+    assert body["units"] == []
+    assert body["unmatched_new_region_codes"] == ["00.01"]
+
+
+async def test_tingkat_provinsi_tidak_didukung_untuk_swing(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    party = await _id(session, Party, Party.party_code, "UJI_A")
+    response = await api.get(
+        f"{PREFIX}/elections/compare",
+        params={"election_type": "legislative_dpr", "party_id": str(party), "level": "province"},
+    )
+    assert response.status_code == 422
+
+
+async def test_induk_drill_down_harus_ada_dan_bertingkat_tepat(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    eid = await _election_id(session, ElectionType.LEGISLATIVE_DPR, 2024)
+    tidak_ada = await api.get(
+        f"{PREFIX}/elections/{eid}/results",
+        params={"level": "district", "parent_id": str(uuid.uuid4())},
+    )
+    assert tidak_ada.status_code == 404
+    provinsi = await _id(session, Region, Region.region_code, "00")
+    salah_tingkat = await api.get(
+        f"{PREFIX}/elections/{eid}/results",
+        params={"level": "district", "parent_id": str(provinsi)},
+    )
+    assert salah_tingkat.status_code == 422
+
+
+async def test_kontestasi_tanpa_tanggal_ditolak_dengan_alasan(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    election = await session.get(
+        Election, uuid.UUID(await _election_id(session, ElectionType.LEGISLATIVE_DPR, 2024))
+    )
+    assert election is not None
+    election.election_date = None
+    await session.flush()
+    response = await api.get(f"{PREFIX}/elections/{election.id}/results")
+    assert response.status_code == 422
+    assert "tanggal pemungutan suara" in response.json()["detail"]

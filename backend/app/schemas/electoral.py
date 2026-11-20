@@ -58,6 +58,11 @@ class PartyOut(BaseModel):
 class Percentage(BaseModel):
     value: float | None
     unavailable: str | None = Field(default=None, description="Alasan bila value null")
+    data_status: DataStatus | None = Field(
+        default=None,
+        description="Status terlemah dari semua angka yang dipakai menghitungnya "
+        "(pembilang dan penyebut)",
+    )
 
 
 class ItemResult(BaseModel):
@@ -86,6 +91,9 @@ class Leader(BaseModel):
     tie: bool
     margin: int | None
     unavailable: str | None = None
+    data_status: DataStatus | None = Field(
+        default=None, description="Status terlemah dari suara yang dibandingkan"
+    )
 
 
 class RegionResult(BaseModel):
@@ -119,7 +127,9 @@ class CompareOut(BaseModel):
     level: RegionLevel
     party: PartyOut
     units: list[SwingUnit]
-    unmatched_old_region_codes: list[str]
+    unmatched_old_region_codes: list[str] = Field(
+        description="Wilayah lama tanpa padanan yang sah; swing-nya tidak dihitung"
+    )
     unmatched_new_region_codes: list[str]
     sources: list[Source]
 
