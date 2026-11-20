@@ -25,7 +25,7 @@ $runWeb = @("docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-lc")
 
 switch ($Target) {
     "help" {
-        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, staging-init, load, datasets, promote, completeness, reset"
+        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, staging-init, load, datasets, promote, completeness, users, reset"
     }
     "up" {
         Invoke-Step "docker compose up" @("docker", "compose", "up", "-d")
@@ -72,6 +72,7 @@ switch ($Target) {
         if (-not $Rest -or $Rest.Count -lt 1) { throw 'pakai: .\make.ps1 promote VERSION_ID [--dry-run]' }
         Invoke-Step "promosi ke produksi" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.datasets", "promote") + $Rest)
     }
+    "users" { Invoke-Step "kelola pengguna" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.users") + $Rest) }
     "completeness" { Invoke-Step "laporan kelengkapan" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.reports", "completeness") + $Rest) }
     "revision" {
         if (-not $Rest -or $Rest.Count -eq 0) { throw 'pakai: .\make.ps1 revision "pesan migrasi"' }

@@ -1,17 +1,35 @@
 import { Activity, CircleAlert, CircleCheck } from "lucide-react";
+import { cookies } from "next/headers";
+import Link from "next/link";
 
+import { LogoutButton } from "@/components/logout-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiBaseUrl, fetchHealth } from "@/lib/api";
+import { apiBaseUrl, fetchCurrentUser, fetchHealth, roleLabel } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const health = await fetchHealth();
+  const cookieHeader = (await cookies()).toString();
+  const [health, user] = await Promise.all([fetchHealth(), fetchCurrentUser(cookieHeader)]);
   const sehat = health.reachable && health.data.status === "ok";
 
   return (
     <main className="container max-w-3xl py-16">
+      <div className="mb-6 flex items-center justify-end gap-3 text-sm">
+        {user ? (
+          <>
+            <span className="text-muted-foreground">
+              {user.full_name} · {roleLabel[user.role]}
+            </span>
+            <LogoutButton />
+          </>
+        ) : (
+          <Link href="/login" className="font-medium underline underline-offset-4">
+            Masuk
+          </Link>
+        )}
+      </div>
       <header className="mb-10">
         <p className="text-sm font-medium text-muted-foreground">Populi Center</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">

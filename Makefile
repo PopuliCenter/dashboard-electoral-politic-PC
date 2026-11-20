@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN_API := $(COMPOSE) run --rm --no-deps api sh -lc
 RUN_WEB := $(COMPOSE) run --rm --no-deps web sh -lc
 
-.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry validate staging-init load datasets promote completeness shell-api shell-db reset
+.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry validate staging-init load datasets promote completeness users shell-api shell-db reset
 
 help:
 	@echo "up              jalankan db, api, web"
@@ -24,6 +24,7 @@ help:
 	@echo "load f=... a=.. validasi lalu muat berkas ke staging (a: --dataset, --source-name, ...)"
 	@echo "datasets        daftar versi dataset di staging dan statusnya"
 	@echo "promote v=ID    promosikan satu versi staging ke produksi (a=--dry-run untuk uji)"
+	@echo "users a=...     kelola pengguna (a=\"create EMAIL --name NAMA --role admin\", list, ...)"
 	@echo "completeness    laporan kelengkapan (a=\"--db staging --detail --format csv\")"
 
 up:
@@ -91,6 +92,10 @@ datasets:
 promote:
 	@test -n "$(v)" || (echo "pakai: make promote v=VERSION_ID [a=--dry-run]" && exit 1)
 	$(COMPOSE) run --rm api python -m app.datasets promote $(v) $(a)
+
+# Interaktif: password diminta lewat prompt tersembunyi, tidak lewat argumen.
+users:
+	$(COMPOSE) run --rm api python -m app.users $(a)
 
 completeness:
 	$(COMPOSE) run --rm api python -m app.reports completeness $(a)

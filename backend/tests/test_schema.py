@@ -26,6 +26,7 @@ TABEL_INTI = {
     "audit_logs",
     "users",
     "roles",
+    "user_sessions",  # T5.1
 }
 
 TABEL_HASIL = ("election_results", "candidate_results", "region_turnout")

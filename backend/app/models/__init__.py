@@ -3,7 +3,7 @@
 Semua model diimpor di sini supaya Alembic autogenerate melihat seluruh metadata.
 """
 
-from app.models.auth import Role, User
+from app.models.auth import Role, User, UserSession
 from app.models.base import Base
 from app.models.election import CandidatePair, Election, Party
 from app.models.enums import (
@@ -41,5 +41,6 @@ __all__ = [
     "Role",
     "RoleCode",
     "User",
+    "UserSession",
     "ValidationStatus",
 ]

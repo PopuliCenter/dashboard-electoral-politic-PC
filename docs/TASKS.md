@@ -51,7 +51,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 
 ## Tahap 5 — Manajemen data dan akses (minggu 14–15)
 
-- [ ] T5.1 Login, sesi aman, hashing password, dua peran (Admin, Peneliti).
+- [x] T5.1 Login, sesi aman, hashing password, dua peran (Admin, Peneliti). **20 November 2026:** scrypt (pustaka standar), sesi server-side dengan cookie HttpOnly/SameSite=Lax/Secure, penguncian akun, audit login, pemeriksaan Origin; semua endpoint data wajib login; CLI `make users`; halaman `/login`. 269 test lolos. Belum ada antarmuka pengelolaan pengguna di web (sementara lewat CLI).
 - [ ] T5.2 Antarmuka impor: unggah CSV/XLSX → hasil validasi → setujui → promosi.
 - [ ] T5.3 Halaman metadata sumber dan riwayat versi dataset.
 - [ ] T5.4 Ekspor CSV/XLSX dari peta dan halaman partai, menyertakan sumber dan status data.

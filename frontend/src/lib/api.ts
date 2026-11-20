@@ -27,6 +27,34 @@ export type HealthResult =
   | { reachable: true; data: HealthResponse }
   | { reachable: false; error: string };
 
+export type Role = "admin" | "researcher";
+
+export type CurrentUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+};
+
+export const roleLabel: Record<Role, string> = { admin: "Admin", researcher: "Peneliti" };
+
+/**
+ * Pengguna yang sedang login, dibaca di server Next.js dengan meneruskan cookie
+ * sesi dari permintaan peramban. null bila belum login atau API tidak terjangkau.
+ */
+export async function fetchCurrentUser(cookieHeader: string): Promise<CurrentUser | null> {
+  if (!cookieHeader) return null;
+  try {
+    const response = await fetch(`${apiBaseUrl}/auth/me`, {
+      cache: "no-store",
+      headers: { cookie: cookieHeader },
+    });
+    return response.ok ? ((await response.json()) as CurrentUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Tidak pernah melempar: halaman harus tetap tampil walau API mati. */
 export async function fetchHealth(): Promise<HealthResult> {
   try {

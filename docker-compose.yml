@@ -30,6 +30,10 @@ services:
       STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-populi}:${POSTGRES_PASSWORD:-ganti_untuk_produksi}@db:5432/populi_staging}
       API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-480}
+      SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-12}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:

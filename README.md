@@ -43,6 +43,21 @@ make fmt        # format ulang kode
 
 Tanpa keduanya, isi tiap target ada di `Makefile` dan bisa dijalankan langsung.
 
+## Pengguna
+
+Semua data di API dan dashboard wajib login. Akun pertama (Admin) dibuat dari
+terminal; password diminta lewat prompt tersembunyi, minimal 12 karakter:
+
+```bash
+make migrate
+make users a="create nama@populicenter.org --name 'Nama Lengkap' --role admin"
+make users a="list"
+```
+
+Perintah lain: `set-password EMAIL` (mencabut semua sesinya), `deactivate EMAIL`,
+`activate EMAIL`. Peran: `admin` dan `researcher` (Peneliti). Akun dikunci 15
+menit setelah 5 kali gagal login.
+
 ## Struktur repo
 
 ```

@@ -17,13 +17,15 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import current_user
 from app.core.database import get_session
 from app.datasets.staging import SourceInfo, load_into_staging
 from app.importer.catalog import load_catalog
 from app.importer.validator import validate_file
 from app.main import app
-from app.models import CandidatePair, Election, Party, Region, RegionCrosswalk
-from app.models.enums import CrosswalkRelation, ElectionType
+from app.models import CandidatePair, Election, Party, Region, RegionCrosswalk, User
+from app.models.enums import CrosswalkRelation, ElectionType, RoleCode
+from app.services import auth
 from tests.import_fixtures import (
     isi_referensi_fiktif,
     partisipasi,
@@ -129,10 +131,37 @@ async def api(session: AsyncSession, tmp_path: Path) -> AsyncGenerator[AsyncClie
     async def override() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
+    # Endpoint data wajib login (T5.1); alur login sendiri diuji di test_auth_db.py.
+    peneliti = await auth.create_user(
+        session,
+        "peneliti-t41@uji.invalid",
+        "Peneliti Uji",
+        "kata-sandi-uji-panjang",
+        RoleCode.RESEARCHER,
+    )
+
+    async def as_researcher() -> User:
+        return peneliti
+
     app.dependency_overrides[get_session] = override
+    app.dependency_overrides[current_user] = as_researcher
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             yield c
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(current_user, None)
+
+
+async def test_tanpa_login_ditolak(session: AsyncSession) -> None:
+    async def override() -> AsyncGenerator[AsyncSession, None]:
+        yield session
+
+    app.dependency_overrides[get_session] = override
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            for path in ("/elections", "/regions", "/parties"):
+                assert (await c.get(f"{PREFIX}{path}")).status_code == 401
     finally:
         app.dependency_overrides.pop(get_session, None)
 
