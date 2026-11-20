@@ -43,7 +43,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 ## Tahap 4 — API dan antarmuka (minggu 10–13)
 
 - [ ] T4.1 Endpoint: `/regions`, `/regions/{id}/children`, `/elections`, `/elections/{id}/results`, `/elections/compare`, `/parties`, `/parties/{id}/results`. Setiap respons membawa `source` dan `data_status`.
-- [ ] T4.2 Fungsi analitik teruji: vote share, swing (hanya unit terpadankan dan partai di kedua pemilu), margin, turnout, partai dominan.
+- [x] T4.2 Fungsi analitik teruji: vote share, swing (hanya unit terpadankan dan partai di kedua pemilu), margin, turnout, partai dominan. **20 November 2026:** `backend/app/services/analytics.py`, fungsi murni; 36 test dengan angka fiktif hitungan tangan, 191 test lolos. Belum dipakai endpoint (T4.1).
 - [ ] T4.3 Halaman peta: MapLibre + PMTiles, filter (tahun, jenis, kab/kota), 4 lapisan, drill-down ke kecamatan, panel detail, legenda.
 - [ ] T4.4 Halaman partai: peringkat, sebaran per kab/kota, perubahan suara (ECharts).
 - [ ] T4.5 Warna partai dari konfigurasi, bukan hard-code.
