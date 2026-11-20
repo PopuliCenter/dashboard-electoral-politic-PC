@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN_API := $(COMPOSE) run --rm --no-deps api sh -lc
 RUN_WEB := $(COMPOSE) run --rm --no-deps web sh -lc
 
-.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry validate shell-api shell-db reset
+.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry validate staging-init load datasets promote shell-api shell-db reset
 
 help:
 	@echo "up              jalankan db, api, web"
@@ -20,6 +20,10 @@ help:
 	@echo "seed            isi kontestasi, paslon, partai dari data/reference"
 	@echo "seed-dry        validasi dan tampilkan perubahan seed tanpa menulis"
 	@echo "validate f=...  validasi berkas impor baku (CSV), tanpa menulis"
+	@echo "staging-init    buat database staging lokal, migrasi, dan seed"
+	@echo "load f=... a=.. validasi lalu muat berkas ke staging (a: --dataset, --source-name, ...)"
+	@echo "datasets        daftar versi dataset di staging dan statusnya"
+	@echo "promote v=ID    promosikan satu versi staging ke produksi (a=--dry-run untuk uji)"
 
 up:
 	$(COMPOSE) up -d
@@ -65,6 +69,24 @@ seed-dry:
 validate:
 	@test -n "$(f)" || (echo "pakai: make validate f=path/ke/berkas.csv" && exit 1)
 	$(COMPOSE) run --rm -v "$(abspath $(f)):/import/$(notdir $(f)):ro" api python -m app.importer "/import/$(notdir $(f))"
+
+# Lokal, staging adalah database kedua di kontainer db yang sama. Migrasi dan
+# seed dijalankan dengan DATABASE_URL diarahkan ke STAGING_DATABASE_URL.
+STAGING_DB ?= populi_staging
+staging-init:
+	$(COMPOSE) exec -T db sh -c 'psql -U "$$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$(STAGING_DB)'\''" | grep -q 1 || createdb -U "$$POSTGRES_USER" $(STAGING_DB)'
+	$(COMPOSE) run --rm api sh -lc 'DATABASE_URL="$$STAGING_DATABASE_URL" alembic upgrade head && DATABASE_URL="$$STAGING_DATABASE_URL" python -m app.seed'
+
+load:
+	@test -n "$(f)" || (echo "pakai: make load f=berkas.csv a=\"--dataset NAMA --source-name NAMA ...\"" && exit 1)
+	$(COMPOSE) run --rm -v "$(abspath $(f)):/import/$(notdir $(f)):ro" api python -m app.datasets load "/import/$(notdir $(f))" $(a)
+
+datasets:
+	$(COMPOSE) run --rm api python -m app.datasets list
+
+promote:
+	@test -n "$(v)" || (echo "pakai: make promote v=VERSION_ID [a=--dry-run]" && exit 1)
+	$(COMPOSE) run --rm api python -m app.datasets promote $(v) $(a)
 
 revision:
 	@test -n "$(m)" || (echo "pakai: make revision m=\"pesan migrasi\"" && exit 1)

@@ -26,6 +26,8 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://populi:ganti_untuk_produksi@db:5432/populi}
+      # Lokal: database kedua di kontainer db yang sama (make staging-init).
+      STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-populi}:${POSTGRES_PASSWORD:-ganti_untuk_produksi}@db:5432/populi_staging}
       API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://populi:ganti_untuk_produksi@db:5432/populi"
 
+    # Database staging (T3.4): semua data baru dimuat ke sini dulu, lalu
+    # dipromosikan ke database_url. Kosong berarti perintah muat dan promosi
+    # menolak jalan. Di produksi letaknya di Server B (REVISI-v1.1 bagian 4).
+    staging_database_url: str | None = None
+
     # Daftar dipisah koma, bukan JSON, supaya mudah ditulis di .env
     cors_origins: str = "http://localhost:3000"
 

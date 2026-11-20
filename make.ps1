@@ -25,7 +25,7 @@ $runWeb = @("docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-lc")
 
 switch ($Target) {
     "help" {
-        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, reset"
+        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, staging-init, load, datasets, promote, reset"
     }
     "up" {
         Invoke-Step "docker compose up" @("docker", "compose", "up", "-d")
@@ -52,6 +52,25 @@ switch ($Target) {
         $file = (Resolve-Path $Rest[0]).Path
         $name = Split-Path $file -Leaf
         Invoke-Step "validasi impor" @("docker", "compose", "run", "--rm", "-v", "${file}:/import/${name}:ro", "api", "python", "-m", "app.importer", "/import/$name")
+    }
+    "staging-init" {
+        # Lokal, staging adalah database kedua di kontainer db yang sama.
+        $create = 'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = ''populi_staging''" | grep -q 1 || createdb -U "$POSTGRES_USER" populi_staging'
+        Invoke-Step "buat database staging" @("docker", "compose", "exec", "-T", "db", "sh", "-c", $create)
+        Invoke-Step "migrasi dan seed staging" ($runApi + 'DATABASE_URL="$STAGING_DATABASE_URL" alembic upgrade head && DATABASE_URL="$STAGING_DATABASE_URL" python -m app.seed')
+    }
+    "load" {
+        if (-not $Rest -or $Rest.Count -lt 1) { throw 'pakai: .\make.ps1 load berkas.csv --dataset NAMA --source-name NAMA ...' }
+        $file = (Resolve-Path $Rest[0]).Path
+        $name = Split-Path $file -Leaf
+        $extra = @()
+        if ($Rest.Count -gt 1) { $extra = $Rest[1..($Rest.Count - 1)] }
+        Invoke-Step "muat ke staging" (@("docker", "compose", "run", "--rm", "-v", "${file}:/import/${name}:ro", "api", "python", "-m", "app.datasets", "load", "/import/$name") + $extra)
+    }
+    "datasets" { Invoke-Step "daftar dataset" @("docker", "compose", "run", "--rm", "api", "python", "-m", "app.datasets", "list") }
+    "promote" {
+        if (-not $Rest -or $Rest.Count -lt 1) { throw 'pakai: .\make.ps1 promote VERSION_ID [--dry-run]' }
+        Invoke-Step "promosi ke produksi" (@("docker", "compose", "run", "--rm", "api", "python", "-m", "app.datasets", "promote") + $Rest)
     }
     "revision" {
         if (-not $Rest -or $Rest.Count -eq 0) { throw 'pakai: .\make.ps1 revision "pesan migrasi"' }
