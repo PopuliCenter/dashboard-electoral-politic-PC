@@ -160,12 +160,6 @@ async def replacement_warnings(
     if not earlier:
         return []
     warnings: list[str] = []
-    old_statuses = sorted({v.data_status.value for v in earlier} - {new_status.value})
-    if old_statuses:
-        warnings.append(
-            f"status data berubah di {where}: {', '.join(old_statuses)} -> {new_status.value}"
-        )
-
     model = MODEL_BY_KIND[kind]
     old_rows = cast(
         Sequence[ResultRow],
@@ -175,6 +169,14 @@ async def replacement_warnings(
             )
         ).all(),
     )
+    # Status dari baris yang MASIH hidup, bukan dari semua versi lama: versi yang
+    # barisnya sudah lama digantikan tidak boleh memicu peringatan palsu.
+    old_statuses = sorted({row.data_status.value for row in old_rows} - {new_status.value})
+    if old_statuses:
+        warnings.append(
+            f"status data berubah di {where}: {', '.join(old_statuses)} -> {new_status.value}"
+        )
+
     new_keys = {row_key(kind, row) for row in new_rows}
     lost_rows = [row for row in old_rows if row_key(kind, row) not in new_keys]
     if not lost_rows:

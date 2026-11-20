@@ -552,3 +552,29 @@ async def test_wilayah_produksi_yang_tidak_berlaku_menolak_promosi(
     assert hasil.version is not None
     with pytest.raises(DatasetError, match="tidak berlaku pada hari pemungutan suara"):
         await promote_version(staging, produksi, hasil.version.id)
+
+
+async def test_versi_yang_sudah_lama_digantikan_tidak_memicu_peringatan_palsu(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    """v1 unofficial -> v2 official -> v3 official: v3 tidak mengubah status apa pun."""
+    staging, produksi = dua_db
+    baris = [suara_partai("00.01.02", "UJI_A", "10", status="unofficial")]
+    v1 = await _muat(staging, tmp_path / "a.csv", baris)
+    v2 = await _muat(staging, tmp_path / "b.csv", _dpr(("00.01.02", "UJI_A", "11")))
+    v3 = await _muat(staging, tmp_path / "c.csv", _dpr(("00.01.02", "UJI_A", "12")))
+    assert v1.version and v2.version and v3.version
+    assert any("unofficial -> official" in w for w in v2.warnings)
+    assert v3.warnings == []
+
+    # Di produksi pun sama, setelah v1 dan v2 pernah dipromosikan.
+    v4 = await _muat(staging, tmp_path / "d.csv", baris)
+    assert v4.version is not None
+    await promote_version(staging, produksi, v4.version.id)
+    v5 = await _muat(staging, tmp_path / "e.csv", _dpr(("00.01.02", "UJI_A", "13")))
+    assert v5.version is not None
+    laporan_v5 = await promote_version(staging, produksi, v5.version.id)
+    assert any("unofficial -> official" in w for w in laporan_v5.warnings)
+    v6 = await _muat(staging, tmp_path / "f.csv", _dpr(("00.01.02", "UJI_A", "14")))
+    assert v6.version is not None
+    assert (await promote_version(staging, produksi, v6.version.id)).warnings == []
