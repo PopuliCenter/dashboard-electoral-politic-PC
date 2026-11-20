@@ -6,7 +6,7 @@ Tidak ada jalur tulis langsung ke database produksi.
 | Folder | Isi | Tugas |
 | --- | --- | --- |
 | `extract/` | Pembaca PDF dan Excel KPU (Camelot, Pandas) → CSV format baku | T3.2 |
-| `validate/` | Validator format impor dan skrip rekonsiliasi total per kab/kota | T3.1, T3.3 |
+| `validate/` | Skrip rekonsiliasi total per kab/kota. Validator format impor (T3.1) ada di `backend/app/importer/` supaya dipakai juga oleh antarmuka unggah T5.2; formatnya di `docs/format-impor.md` | T3.1, T3.3 |
 | `load/` | Muat ke staging, promosi staging → produksi, tulis `dataset_versions` dan `audit_logs` | T3.4 |
 | `tiles/` | Batas wilayah → tippecanoe → PMTiles di `data/tiles/` | T2.4 |
 

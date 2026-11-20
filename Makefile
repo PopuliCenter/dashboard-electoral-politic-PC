@@ -5,7 +5,7 @@ COMPOSE := docker compose
 RUN_API := $(COMPOSE) run --rm --no-deps api sh -lc
 RUN_WEB := $(COMPOSE) run --rm --no-deps web sh -lc
 
-.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry shell-api shell-db reset
+.PHONY: help up down logs build check check-backend check-frontend fmt test migrate revision seed seed-dry validate shell-api shell-db reset
 
 help:
 	@echo "up              jalankan db, api, web"
@@ -19,6 +19,7 @@ help:
 	@echo "revision m=...  buat migrasi baru (autogenerate)"
 	@echo "seed            isi kontestasi, paslon, partai dari data/reference"
 	@echo "seed-dry        validasi dan tampilkan perubahan seed tanpa menulis"
+	@echo "validate f=...  validasi berkas impor baku (CSV), tanpa menulis"
 
 up:
 	$(COMPOSE) up -d
@@ -58,6 +59,12 @@ seed:
 
 seed-dry:
 	$(COMPOSE) run --rm api python -m app.seed --dry-run
+
+# Berkas di-mount read-only ke /import; nama berkas dipertahankan supaya pesan
+# galat menyebut nama yang sama dengan yang dibuka peneliti.
+validate:
+	@test -n "$(f)" || (echo "pakai: make validate f=path/ke/berkas.csv" && exit 1)
+	$(COMPOSE) run --rm -v "$(abspath $(f)):/import/$(notdir $(f)):ro" api python -m app.importer "/import/$(notdir $(f))"
 
 revision:
 	@test -n "$(m)" || (echo "pakai: make revision m=\"pesan migrasi\"" && exit 1)

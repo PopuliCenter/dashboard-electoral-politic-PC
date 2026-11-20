@@ -25,7 +25,7 @@ $runWeb = @("docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-lc")
 
 switch ($Target) {
     "help" {
-        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, reset"
+        Write-Host "target: up, down, logs, build, check, fmt, test, migrate, revision, seed, seed-dry, validate, reset"
     }
     "up" {
         Invoke-Step "docker compose up" @("docker", "compose", "up", "-d")
@@ -47,6 +47,12 @@ switch ($Target) {
     "migrate" { Invoke-Step "alembic upgrade head" @("docker", "compose", "run", "--rm", "api", "alembic", "upgrade", "head") }
     "seed" { Invoke-Step "seed data referensi" @("docker", "compose", "run", "--rm", "api", "python", "-m", "app.seed") }
     "seed-dry" { Invoke-Step "seed (uji, tanpa menulis)" @("docker", "compose", "run", "--rm", "api", "python", "-m", "app.seed", "--dry-run") }
+    "validate" {
+        if (-not $Rest -or $Rest.Count -eq 0) { throw 'pakai: .\make.ps1 validate berkas.csv' }
+        $file = (Resolve-Path $Rest[0]).Path
+        $name = Split-Path $file -Leaf
+        Invoke-Step "validasi impor" @("docker", "compose", "run", "--rm", "-v", "${file}:/import/${name}:ro", "api", "python", "-m", "app.importer", "/import/$name")
+    }
     "revision" {
         if (-not $Rest -or $Rest.Count -eq 0) { throw 'pakai: .\make.ps1 revision "pesan migrasi"' }
         Invoke-Step "alembic revision" @("docker", "compose", "run", "--rm", "api", "alembic", "revision", "--autogenerate", "-m", ($Rest -join " "))

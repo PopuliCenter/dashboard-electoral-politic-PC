@@ -7,20 +7,16 @@ berkas (kelengkapan enam kontestasi, tanggal serentak, nomor urut paslon) baru
 dijalankan setelah ketiga berkas bersih, supaya satu salah ketik tidak memicu
 rentetan galat turunan yang menyesatkan.
 
-Berkas biasanya disunting di Excel, jadi pembaca ini menerima dua kebiasaan
-Excel: BOM UTF-8 di awal berkas, dan titik koma sebagai pemisah kolom (bawaan
-Excel berlokal Indonesia, karena koma dipakai sebagai pemisah desimal).
+Berkas biasanya disunting di Excel; pembacaannya (BOM, pemisah titik koma) ada
+di app.core.csv_files dan dipakai bersama validator impor T3.1.
 """
 
-import csv
-import hashlib
-import io
 import re
-from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from app.core.csv_files import check_columns, read_csv
 from app.models.enums import ElectionType
 
 # Terikat ke kolom contested_<tahun> dan ballot_number_<tahun> di tabel parties.
@@ -137,53 +133,12 @@ def _read_csv(
     path: Path, expected: tuple[str, ...], errors: list[str]
 ) -> tuple[list[tuple[int, dict[str, str]]], str | None]:
     """Kembalikan (baris, checksum). Baris kosong dilewati."""
-    if not path.is_file():
-        errors.append(f"{path.name}: berkas tidak ditemukan di {path.parent}")
+    table = read_csv(path, errors)
+    if table is None:
         return [], None
-
-    raw = path.read_bytes()
-    checksum = hashlib.sha256(raw).hexdigest()
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        errors.append(
-            f"{path.name}: bukan UTF-8. Di Excel, simpan dengan format "
-            "'CSV UTF-8 (Comma delimited)'"
-        )
-        return [], checksum
-
-    header = text.partition("\n")[0]
-    if not header.strip():
-        errors.append(f"{path.name}: berkas kosong atau tidak punya baris judul kolom")
-        return [], checksum
-
-    delimiter = ";" if header.count(";") > header.count(",") else ","
-    # StringIO, bukan splitlines(): sel bertanda kutip boleh berisi ganti baris.
-    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
-    columns = [(c or "").strip() for c in (reader.fieldnames or [])]
-
-    missing = [c for c in expected if c not in columns]
-    unknown = [c for c in columns if c not in expected]
-    duplicated = [c for c, n in Counter(columns).items() if n > 1]
-    if missing:
-        errors.append(f"{path.name}: kolom wajib tidak ada: {', '.join(missing)}")
-    if unknown:
-        errors.append(f"{path.name}: kolom tidak dikenal: {', '.join(unknown)}")
-    if duplicated:
-        errors.append(f"{path.name}: kolom ganda: {', '.join(duplicated)}")
-    if missing or unknown or duplicated:
-        return [], checksum
-
-    rows: list[tuple[int, dict[str, str]]] = []
-    for raw_row in reader:
-        if None in raw_row:
-            errors.append(f"{path.name}:{reader.line_num}: jumlah kolom lebih dari judul")
-            continue
-        row = {(k or "").strip(): (v or "").strip() for k, v in raw_row.items()}
-        if not any(row.values()):
-            continue
-        rows.append((reader.line_num, row))
-    return rows, checksum
+    if not check_columns(table.name, table.columns, expected, errors):
+        return [], table.checksum
+    return list(table.rows), table.checksum
 
 
 class _Row:

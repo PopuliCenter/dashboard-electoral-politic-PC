@@ -32,7 +32,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 
 ## Tahap 3 — Data elektoral (minggu 6–9)
 
-- [ ] T3.1 Format impor baku (CSV) + validator: kode wilayah dikenal, suara tidak negatif, tidak duplikat, kontestasi dan partai cocok.
+- [x] T3.1 Format impor baku (CSV) + validator: kode wilayah dikenal, suara tidak negatif, tidak duplikat, kontestasi dan partai cocok. **20 November 2026:** tiga jenis berkas (suara partai, suara paslon, partisipasi), format di `docs/format-impor.md`, `make validate f=...`; diuji dengan data fiktif, 129 test lolos. Belum dicoba pada data nyata: menunggu wilayah (T2.2).
 - [ ] T3.2 Ekstraktor PDF/Excel per jenis dokumen → format impor baku. Hasil ekstraksi selalu masuk staging dulu.
 - [ ] T3.3 Skrip rekonsiliasi: total per kab/kota dibanding rekapitulasi resmi; keluaran laporan selisih.
 - [ ] T3.4 Promosi staging → produksi hanya untuk dataset yang lolos; tulis `dataset_versions` dan `audit_logs`.
