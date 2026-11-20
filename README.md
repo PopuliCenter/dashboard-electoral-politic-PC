@@ -55,8 +55,9 @@ make users a="list"
 ```
 
 Perintah lain: `set-password EMAIL` (mencabut semua sesinya), `deactivate EMAIL`,
-`activate EMAIL`. Peran: `admin` dan `researcher` (Peneliti). Akun dikunci 15
-menit setelah 5 kali gagal login.
+`activate EMAIL`. Peran: `admin` dan `researcher` (Peneliti). Setelah 5 kali gagal
+login dari satu alamat IP, akun itu dikunci 15 menit **untuk IP tersebut saja**;
+dari IP lain pemiliknya tetap bisa masuk. Ganti password menghapus penguncian.
 
 ## Struktur repo
 

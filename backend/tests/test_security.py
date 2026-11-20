@@ -1,15 +1,19 @@
 """Hash password dan token sesi (T5.1), tanpa database."""
 
+import asyncio
+
 import pytest
 
 from app.core.security import (
     PasswordPolicyError,
     check_password_policy,
     hash_password,
+    hash_password_async,
     hash_session_token,
     needs_rehash,
     new_session_token,
     verify_password,
+    verify_password_async,
 )
 
 PASSWORD = "kata-sandi-uji-panjang"
@@ -44,6 +48,32 @@ def test_perlu_hash_ulang_bila_parameter_berubah() -> None:
 def test_kebijakan_panjang_password(password: str) -> None:
     with pytest.raises(PasswordPolicyError):
         check_password_policy(password)
+
+
+async def test_hash_tidak_menahan_event_loop() -> None:
+    """Satu hash ~100 ms. Delapan serentak tidak boleh membekukan coroutine lain."""
+    stored = hash_password(PASSWORD)
+    jeda_terbesar = 0.0
+
+    async def detak() -> None:
+        nonlocal jeda_terbesar
+        loop = asyncio.get_running_loop()
+        for _ in range(30):
+            mulai = loop.time()
+            await asyncio.sleep(0.01)
+            jeda_terbesar = max(jeda_terbesar, loop.time() - mulai - 0.01)
+
+    hasil = await asyncio.gather(
+        *(verify_password_async(PASSWORD, stored) for _ in range(8)), detak()
+    )
+    assert all(hasil[:8])
+    assert jeda_terbesar < 0.05, f"event loop tertahan {jeda_terbesar:.3f} detik"
+
+
+async def test_hash_async_sama_dengan_sinkron() -> None:
+    stored = await hash_password_async(PASSWORD)
+    assert verify_password(PASSWORD, stored)
+    assert not await verify_password_async("salah", stored)
 
 
 def test_token_sesi_acak_dan_hanya_hash_yang_disimpan() -> None:

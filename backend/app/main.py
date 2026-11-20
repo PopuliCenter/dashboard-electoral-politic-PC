@@ -12,7 +12,12 @@ from app.core.config import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Dokumentasi API memetakan semua endpoint; di luar pengembangan tidak dibuka.
+    docs_enabled = settings.app_env == "development"
     app = FastAPI(
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
         title=settings.app_name,
         version="0.1.0",
         description=(

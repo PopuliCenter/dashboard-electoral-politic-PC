@@ -27,6 +27,7 @@ TABEL_INTI = {
     "users",
     "roles",
     "user_sessions",  # T5.1
+    "login_throttles",  # review T5.1
 }
 
 TABEL_HASIL = ("election_results", "candidate_results", "region_turnout")

@@ -8,20 +8,21 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import case, delete, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
     check_password_policy,
-    hash_password,
+    hash_password_async,
     hash_session_token,
     needs_rehash,
     new_session_token,
-    verify_password,
+    verify_password_async,
 )
-from app.models import AuditLog, Role, User, UserSession
+from app.models import AuditLog, LoginThrottle, Role, User, UserSession
 from app.models.enums import RoleCode
 
 # Pesan tunggal untuk semua kegagalan login: tidak membedakan email tak terdaftar,
@@ -51,6 +52,64 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+# Kunci penghitung bila alamat IP tidak diketahui. Di belakang Nginx alamat asli
+# wajib diteruskan (T6.1); tanpa itu semua permintaan tampak dari satu IP dan
+# penguncian per akun+IP berperilaku seperti per akun saja.
+UNKNOWN_IP = "unknown"
+
+
+async def _locked_until(
+    session: AsyncSession, user_id: uuid.UUID, ip: str, now: datetime
+) -> datetime | None:
+    locked = await session.scalar(
+        select(LoginThrottle.locked_until).where(
+            LoginThrottle.user_id == user_id, LoginThrottle.ip_address == ip
+        )
+    )
+    return locked if locked is not None and locked > now else None
+
+
+async def _register_failure(
+    session: AsyncSession, settings: Settings, user_id: uuid.UUID, ip: str, now: datetime
+) -> bool:
+    """Naikkan penghitung gagal (pengguna, IP) secara atomik. True bila kini terkunci.
+
+    Satu pernyataan INSERT ... ON CONFLICT DO UPDATE ... RETURNING: permintaan
+    paralel tidak bisa membaca hitungan yang sama lalu sama-sama lolos ambang.
+    Penguncian yang sudah kedaluwarsa memulai hitungan dari 1 lagi.
+    """
+    table = LoginThrottle.__table__
+    base = insert(LoginThrottle).values(
+        user_id=user_id, ip_address=ip, failed_count=1, locked_until=None, updated_at=now
+    )
+    expired = table.c.locked_until.is_not(None) & (table.c.locked_until <= now)
+    stmt = base.on_conflict_do_update(
+        index_elements=[table.c.user_id, table.c.ip_address],
+        set_={
+            "failed_count": case((expired, 1), else_=table.c.failed_count + 1),
+            "locked_until": case((expired, None), else_=table.c.locked_until),
+            "updated_at": now,
+        },
+    ).returning(table.c.failed_count)
+    count = (await session.execute(stmt)).scalar_one()
+    if count < settings.login_max_failures:
+        return False
+    await session.execute(
+        update(LoginThrottle)
+        .where(LoginThrottle.user_id == user_id, LoginThrottle.ip_address == ip)
+        .values(
+            locked_until=now + timedelta(minutes=settings.login_lock_minutes),
+            failed_count=0,
+            updated_at=now,
+        )
+    )
+    return True
+
+
+async def clear_throttles(session: AsyncSession, user_id: uuid.UUID) -> None:
+    await session.execute(delete(LoginThrottle).where(LoginThrottle.user_id == user_id))
+
+
 async def login(
     session: AsyncSession,
     settings: Settings,
@@ -61,35 +120,38 @@ async def login(
     user_agent: str | None,
 ) -> LoginResult:
     now = _now()
+    ip = ip_address or UNKNOWN_IP
     normalized = normalize_email(email)
     user = await session.scalar(select(User).where(User.email == normalized))
 
     if user is None:
-        verify_password(password, DUMMY_PASSWORD_HASH)  # samakan waktu respons
+        await verify_password_async(password, DUMMY_PASSWORD_HASH)  # samakan waktu respons
         await _audit(session, "auth.login_failed", None, ip_address, {"reason": "unknown_email"})
         raise LoginError(LOGIN_FAILED)
 
-    if user.locked_until is not None and user.locked_until > now:
-        verify_password(password, DUMMY_PASSWORD_HASH)
+    if await _locked_until(session, user.id, ip, now) is not None:
+        await verify_password_async(password, DUMMY_PASSWORD_HASH)
         await _audit(session, "auth.login_failed", user.id, ip_address, {"reason": "locked"})
         raise LoginError(LOGIN_FAILED)
 
-    if not verify_password(password, user.password_hash) or not user.is_active:
-        reason = "inactive" if user.is_active is False else "wrong_password"
-        if reason == "wrong_password":
-            user.failed_login_count += 1
-            if user.failed_login_count >= settings.login_max_failures:
-                user.locked_until = now + timedelta(minutes=settings.login_lock_minutes)
-                user.failed_login_count = 0
-                reason = "wrong_password_locked"
+    password_ok = await verify_password_async(password, user.password_hash)
+    if not password_ok or not user.is_active:
+        reason = "inactive" if not user.is_active else "wrong_password"
+        if reason == "wrong_password" and await _register_failure(
+            session, settings, user.id, ip, now
+        ):
+            reason = "wrong_password_locked"
         await _audit(session, "auth.login_failed", user.id, ip_address, {"reason": reason})
         raise LoginError(LOGIN_FAILED)
 
-    user.failed_login_count = 0
-    user.locked_until = None
+    await session.execute(
+        delete(LoginThrottle).where(
+            LoginThrottle.user_id == user.id, LoginThrottle.ip_address == ip
+        )
+    )
     user.last_login_at = now
     if needs_rehash(user.password_hash):
-        user.password_hash = hash_password(password)
+        user.password_hash = await hash_password_async(password)
 
     token = new_session_token()
     expires_at = now + timedelta(minutes=settings.session_idle_minutes)
@@ -162,7 +224,7 @@ async def create_user(
     user = User(
         email=normalized,
         full_name=full_name.strip(),
-        password_hash=hash_password(password),
+        password_hash=await hash_password_async(password),
         role_id=role_row.id,
         is_active=True,
     )
@@ -175,9 +237,8 @@ async def create_user(
 async def set_password(session: AsyncSession, user: User, password: str) -> None:
     """Ganti password dan cabut semua sesi pengguna itu."""
     check_password_policy(password)
-    user.password_hash = hash_password(password)
-    user.failed_login_count = 0
-    user.locked_until = None
+    user.password_hash = await hash_password_async(password)
+    await clear_throttles(session, user.id)
     await revoke_all_sessions(session, user.id)
     await _audit(session, "user.set_password", user.id, None, None)
     await session.flush()

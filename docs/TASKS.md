@@ -58,7 +58,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 
 ## Tahap 6 — Operasi (minggu 16–17)
 
-- [ ] T6.1 `docker-compose.prod.yml` untuk Server A dan Server B; Nginx + TLS; Server B tanpa port publik.
+- [ ] T6.1 `docker-compose.prod.yml` untuk Server A dan Server B; Nginx + TLS; Server B tanpa port publik. **Wajib:** Nginx meneruskan alamat IP asli (`X-Forwarded-For`/`X-Real-IP`) dan uvicorn dijalankan dengan `--proxy-headers --forwarded-allow-ips` yang hanya memercayai Nginx. Tanpa itu semua permintaan tampak dari IP Nginx dan penguncian login per akun+IP (T5.1) berperilaku seperti per akun saja.
 - [ ] T6.2 Skrip `pg_dump` terenkripsi (malam + setelah impor), retensi 7 hari; dokumentasi tarikan dari NAS lewat WireGuard.
 - [ ] T6.3 Skrip uji restore ke staging + pembanding jumlah baris dan total suara.
 - [ ] T6.4 Rate limiting, validasi input, header keamanan, audit log.

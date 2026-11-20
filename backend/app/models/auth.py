@@ -35,9 +35,6 @@ class User(Base, UUIDPrimaryKey, Timestamps):
         Uuid(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Penguncian sementara setelah login gagal berulang (T5.1).
-    failed_login_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
-    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     role: Mapped[Role] = relationship(back_populates="users", lazy="joined")
@@ -67,3 +64,23 @@ class UserSession(Base, UUIDPrimaryKey):
     user: Mapped[User] = relationship(lazy="joined")
 
     __table_args__ = (Index("ix_user_sessions_user_id", "user_id"),)
+
+
+class LoginThrottle(Base):
+    """Penghitung login gagal per (pengguna, alamat IP).
+
+    Penguncian per akun DAN IP (keputusan pengguna): penyerang dari IP lain tidak
+    bisa mengunci akun orang, dan tebakan dari satu IP tetap tertahan. Penghitung
+    dinaikkan secara atomik di database supaya permintaan paralel tidak melewati
+    ambang.
+    """
+
+    __tablename__ = "login_throttles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    ip_address: Mapped[str] = mapped_column(String(45), primary_key=True)
+    failed_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

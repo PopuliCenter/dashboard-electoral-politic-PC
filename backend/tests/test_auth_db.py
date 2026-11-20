@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.security import PasswordPolicyError
 from app.main import app
-from app.models import AuditLog, User, UserSession
+from app.models import AuditLog, LoginThrottle, User, UserSession
 from app.models.enums import RoleCode
 from app.services import auth
 
@@ -137,20 +137,62 @@ async def test_sesi_idle_dan_batas_absolut_berakhir(
 # --------------------------------------------------------------------------- #
 
 
-async def test_akun_dikunci_setelah_gagal_berulang(api: AsyncClient, session: AsyncSession) -> None:
-    settings = get_settings()
-    for _ in range(settings.login_max_failures):
-        assert await _login(api, password="salah-terus") == 401
-    # Password benar pun ditolak selama terkunci.
-    assert await _login(api) == 401
+def _dari_ip(ip: str) -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app, client=(ip, 50000)), base_url="http://test")
 
-    user = await _user(session, PENELITI)
-    assert user.locked_until is not None
-    user.locked_until = datetime.now(UTC) - timedelta(seconds=1)
-    await session.flush()
-    assert await _login(api) == 200
-    await session.refresh(user)
-    assert user.failed_login_count == 0 and user.locked_until is None
+
+async def _throttle(session: AsyncSession, email: str, ip: str) -> LoginThrottle | None:
+    user = await _user(session, email)
+    return await session.get(LoginThrottle, (user.id, ip))
+
+
+async def test_akun_dikunci_per_ip_setelah_gagal_berulang(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    settings = get_settings()
+    async with _dari_ip("10.0.0.1") as penyerang, _dari_ip("10.0.0.2") as pemilik:
+        for _ in range(settings.login_max_failures):
+            assert await _login(penyerang, password="salah-terus") == 401
+        # Dari IP penyerang, password benar pun ditolak selama terkunci...
+        assert await _login(penyerang) == 401
+        # ...tetapi pemilik akun dari IP lain tetap bisa masuk (keputusan pengguna).
+        assert await _login(pemilik) == 200
+
+        throttle = await _throttle(session, PENELITI, "10.0.0.1")
+        assert throttle is not None and throttle.locked_until is not None
+        throttle.locked_until = datetime.now(UTC) - timedelta(seconds=1)
+        await session.flush()
+        assert await _login(penyerang) == 200
+        # Login berhasil menghapus penghitung IP itu.
+        session.expire_all()
+        assert await _throttle(session, PENELITI, "10.0.0.1") is None
+
+
+async def test_ganti_password_menghapus_penguncian(api: AsyncClient, session: AsyncSession) -> None:
+    async with _dari_ip("10.0.0.3") as klien:
+        for _ in range(get_settings().login_max_failures):
+            await _login(klien, password="salah-terus")
+        await auth.set_password(
+            session, await _user(session, PENELITI), "password-baru-yang-panjang"
+        )
+        assert await _login(klien, password="password-baru-yang-panjang") == 200
+
+
+async def test_dokumentasi_api_hanya_di_pengembangan(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import create_app
+
+    try:
+        monkeypatch.setenv("APP_ENV", "production")
+        get_settings.cache_clear()
+        produksi = create_app()
+        async with AsyncClient(transport=ASGITransport(app=produksi), base_url="http://test") as c:
+            for path in ("/docs", "/redoc", "/openapi.json"):
+                assert (await c.get(path)).status_code == 404
+    finally:
+        monkeypatch.delenv("APP_ENV", raising=False)
+        get_settings.cache_clear()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        assert (await c.get("/openapi.json")).status_code == 200
 
 
 async def test_akun_nonaktif_tidak_bisa_login_dan_sesinya_dicabut(

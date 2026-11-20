@@ -13,9 +13,13 @@ import base64
 import hashlib
 import hmac
 import secrets
+import threading
 
-# n=2**15, r=8: sekitar 32 MiB memori per hash, cukup lambat untuk menyulitkan
-# tebakan massal, cukup cepat untuk login (puluhan milidetik).
+from starlette.concurrency import run_in_threadpool
+
+# n=2**15, r=8: sekitar 32 MiB memori dan ~100 ms per hash (diukur di kontainer
+# api). Cukup lambat untuk menyulitkan tebakan massal; karena itu hash TIDAK
+# boleh dijalankan langsung di event loop (lihat verify_password_async).
 SCRYPT_N = 2**15
 SCRYPT_R = 8
 SCRYPT_P = 1
@@ -92,3 +96,31 @@ def new_session_token() -> str:
 def hash_session_token(token: str) -> str:
     """SHA-256 token; hanya ini yang disimpan di database."""
     return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Versi async: hash di thread, dengan jumlah serentak dibatasi
+# --------------------------------------------------------------------------- #
+
+# Tiap hash ~32 MiB; empat serentak = ~128 MiB, aman untuk server 8 GB. Antrean
+# menunggu di thread pool, bukan di event loop, jadi endpoint lain tetap jalan.
+MAX_CONCURRENT_HASHES = 4
+_HASH_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_HASHES)
+
+
+def _verify_limited(password: str, stored: str) -> bool:
+    with _HASH_SLOTS:
+        return verify_password(password, stored)
+
+
+def _hash_limited(password: str) -> str:
+    with _HASH_SLOTS:
+        return hash_password(password)
+
+
+async def verify_password_async(password: str, stored: str) -> bool:
+    return await run_in_threadpool(_verify_limited, password, stored)
+
+
+async def hash_password_async(password: str) -> str:
+    return await run_in_threadpool(_hash_limited, password)
