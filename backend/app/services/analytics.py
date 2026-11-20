@@ -33,6 +33,9 @@ class Unavailable(StrEnum):
     NEW_PARTY = "baru"
     NOT_CONTESTED = "tidak ikut pemilu ini"
     UNMATCHED = "wilayah belum dipadankan"
+    # Dipakai lapisan API saat fungsi di sini menolak data mustahil
+    # (InconsistentDataError): angkanya tidak ditampilkan, halaman tetap jalan.
+    INCONSISTENT = "data tidak konsisten"
 
 
 class InconsistentDataError(ValueError):

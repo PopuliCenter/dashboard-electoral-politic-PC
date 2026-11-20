@@ -43,7 +43,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 
 ## Tahap 4 — API dan antarmuka (minggu 10–13)
 
-- [ ] T4.1 Endpoint: `/regions`, `/regions/{id}/children`, `/elections`, `/elections/{id}/results`, `/elections/compare`, `/parties`, `/parties/{id}/results`. Setiap respons membawa `source` dan `data_status`.
+- [x] T4.1 Endpoint: `/regions`, `/regions/{id}/children`, `/elections`, `/elections/{id}/results`, `/elections/compare`, `/parties`, `/parties/{id}/results`. Setiap respons membawa `source` dan `data_status`. **20 November 2026:** ditambah `/regions/{id}`, `/elections/{id}`, `/parties/{id}`; angka tak terhitung dikirim `null` dengan alasan; 14 test API dengan data fiktif, 245 test lolos. **Belum ada login: jangan dibuka ke jaringan publik sebelum T5.1.** Peserta legislatif masih nasional sampai T2.6.
 - [x] T4.2 Fungsi analitik teruji: vote share, swing (hanya unit terpadankan dan partai di kedua pemilu), margin, turnout, partai dominan. **20 November 2026:** `backend/app/services/analytics.py`, fungsi murni; 36 test dengan angka fiktif hitungan tangan, 191 test lolos. Belum dipakai endpoint (T4.1).
 - [ ] T4.3 Halaman peta: MapLibre + PMTiles, filter (tahun, jenis, kab/kota), 4 lapisan, drill-down ke kecamatan, panel detail, legenda.
 - [ ] T4.4 Halaman partai: peringkat, sebaran per kab/kota, perubahan suara (ECharts).
