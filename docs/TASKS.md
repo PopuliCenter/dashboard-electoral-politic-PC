@@ -47,7 +47,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [x] T4.2 Fungsi analitik teruji: vote share, swing (hanya unit terpadankan dan partai di kedua pemilu), margin, turnout, partai dominan. **20 November 2026:** `backend/app/services/analytics.py`, fungsi murni; 36 test dengan angka fiktif hitungan tangan, 191 test lolos. Belum dipakai endpoint (T4.1).
 - [ ] T4.3 Halaman peta: MapLibre + PMTiles, filter (tahun, jenis, kab/kota), 4 lapisan, drill-down ke kecamatan, panel detail, legenda.
 - [ ] T4.4 Halaman partai: peringkat, sebaran per kab/kota, perubahan suara (ECharts).
-- [ ] T4.5 Warna partai dari konfigurasi, bukan hard-code.
+- [x] T4.5 Warna partai dari konfigurasi, bukan hard-code. **20 November 2026:** `data/reference/party_colors.csv` + validasi, warna dan `color_source` di `/parties`, palet cadangan bertanda. **Warna resmi belum diisi**: menunggu peneliti mencatat warna dari identitas visual resmi tiap partai beserta sumbernya.
 
 ## Tahap 5 — Manajemen data dan akses (minggu 14–15)
 

@@ -27,6 +27,26 @@ export type HealthResult =
   | { reachable: true; data: HealthResponse }
   | { reachable: false; error: string };
 
+/**
+ * Partai dari /parties. Warna selalu dari API (data/reference/party_colors.csv),
+ * tidak pernah di-hard-code di frontend (T4.5). color_source "fallback" berarti
+ * warna pembeda sementara, bukan identitas visual partai: tampilkan keterangannya
+ * di legenda.
+ */
+export type Party = {
+  id: string;
+  code: string;
+  name: string;
+  abbreviation: string | null;
+  contested_2019: boolean;
+  contested_2024: boolean;
+  ballot_number_2019: number | null;
+  ballot_number_2024: number | null;
+  new_in_2024: boolean;
+  color: string;
+  color_source: "config" | "fallback";
+};
+
 export type Role = "admin" | "researcher";
 
 export type CurrentUser = {

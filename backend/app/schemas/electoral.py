@@ -12,6 +12,7 @@ Konvensi:
 
 import uuid
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -53,6 +54,10 @@ class PartyOut(BaseModel):
     ballot_number_2019: int | None
     ballot_number_2024: int | None
     new_in_2024: bool = Field(description="Ikut 2024 tetapi tidak 2019: diberi label 'baru'")
+    color: str = Field(description="Warna #RRGGBB dari data/reference/party_colors.csv")
+    color_source: Literal["config", "fallback"] = Field(
+        description="fallback: warna pembeda sementara, BUKAN identitas visual partai"
+    )
 
 
 class Percentage(BaseModel):

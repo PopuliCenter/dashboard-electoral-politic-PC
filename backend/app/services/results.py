@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.party_colors import get_party_colors
 from app.models import (
     CandidatePair,
     CandidateResult,
@@ -93,6 +94,7 @@ def election_out(election: Election) -> ElectionOut:
 
 
 def party_out(party: Party) -> PartyOut:
+    color = get_party_colors().color_for(party.party_code)
     return PartyOut(
         id=party.id,
         code=party.party_code,
@@ -103,6 +105,8 @@ def party_out(party: Party) -> PartyOut:
         ballot_number_2019=party.ballot_number_2019,
         ballot_number_2024=party.ballot_number_2024,
         new_in_2024=party.contested_2024 and not party.contested_2019,
+        color=color.color,
+        color_source=color.source,
     )
 
 

@@ -366,6 +366,9 @@ async def test_daftar_partai_per_tahun(api: AsyncClient) -> None:
     body = (await api.get(f"{PREFIX}/parties", params={"year": 2024})).json()
     assert {p["code"] for p in body} == {"UJI_A", "UJI_C"}
     assert next(p for p in body if p["code"] == "UJI_C")["new_in_2024"] is True
+    # T4.5: setiap partai membawa warna dan asal warnanya.
+    assert all(p["color"].startswith("#") and len(p["color"]) == 7 for p in body)
+    assert {p["color_source"] for p in body} <= {"config", "fallback"}
     assert (await api.get(f"{PREFIX}/parties", params={"year": 2014})).status_code == 422
 
 
