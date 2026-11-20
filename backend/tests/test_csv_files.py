@@ -63,3 +63,12 @@ def test_kutip_tidak_ditutup_dilaporkan_bukan_crash(tmp_path: Path) -> None:
     errors: list[str] = []
     assert read_csv(path, errors) is None
     assert len(errors) == 1 and "tanda kutip yang tidak ditutup" in errors[0]
+
+
+def test_kutip_tidak_ditutup_di_judul_dilaporkan_bukan_crash(tmp_path: Path) -> None:
+    path = tmp_path / "a.csv"
+    isi = 'election_type,election_year,"region_code,vote_count\n' + ("x,y,z,1\n" * 40_000)
+    path.write_text(isi, encoding="utf-8")
+    errors: list[str] = []
+    assert read_csv(path, errors) is None
+    assert len(errors) == 1 and "tanda kutip yang tidak ditutup" in errors[0]

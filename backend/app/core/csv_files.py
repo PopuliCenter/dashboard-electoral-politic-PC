@@ -52,10 +52,11 @@ def read_csv(path: Path, errors: list[str]) -> CsvTable | None:
     delimiter = ";" if header.count(";") > header.count(",") else ","
     # StringIO, bukan splitlines(): sel bertanda kutip boleh berisi ganti baris.
     reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
-    columns = tuple((c or "").strip() for c in (reader.fieldnames or []))
-
     rows: list[tuple[int, dict[str, str]]] = []
     try:
+        # Mengakses fieldnames membaca baris judul; kutip tak tertutup di judul
+        # pun harus tertangkap di sini.
+        columns = tuple((c or "").strip() for c in (reader.fieldnames or []))
         for raw_row in reader:
             if None in raw_row:
                 errors.append(f"{path.name}:{reader.line_num}: jumlah kolom lebih dari judul")
