@@ -14,6 +14,8 @@ Satu baris per keputusan. Keputusan gerbang (Gerbang 1, 2, 3 di `TASKS.md`) waji
 | 2026-11-20 | T2.1 — Alembic dan PostGIS | Autogenerate dibatasi ke skema `public` dan hanya melihat tabel yang didefinisikan di `app/models` | Ekstensi PostGIS (topology, tiger geocoder) membuat puluhan tabel; tanpa batas ini Alembic mengusulkan men-drop semuanya | Tim |
 | 2026-11-20 | T2.1 — commit migrasi | `env.py` memanggil `connection.commit()` eksplisit setelah `run_sync` | `SET search_path` membuka transaksi implisit sehingga transaksi Alembic menjadi no-op; tanpa commit, DDL ter-rollback diam-diam sementara alembic tetap melaporkan sukses | Tim |
 | 2026-11-20 | T2.1 — downgrade | Tipe ENUM dibuang eksplisit di `downgrade()` | PostgreSQL tidak ikut menghapus tipe ENUM saat tabelnya di-drop, sehingga `upgrade head` berikutnya gagal | Tim |
+| 2026-11-20 | Keamanan — port pengembangan | `db`, `api`, dan `web` hanya terikat ke `127.0.0.1`; port host database pindah ke 5433 | Binding 0.0.0.0 membuka PostgreSQL berkredensial pengembangan ke jaringan lokal. Di mesin ini ada PostgreSQL native di 0.0.0.0:5432 sementara Docker hanya dapat `[::]:5432`, sehingga `localhost:5432` bisa mengenai database yang salah | Tim |
+| 2026-11-20 | Keamanan — Next.js | Naik dari 15.1.3 ke 15.5.29, dan postcss langsung ke 8.5.33 | `npm audit --omit=dev` menemukan 1 kerentanan kritis dan 2 tinggi, termasuk RCE tanpa autentikasi. Versi 15.5.29 adalah perbaikan yang disarankan npm dan tidak membawa perubahan yang memutus | Tim |
 
 ## Keputusan terbuka (dari `REVISI-v1.1.md` bagian 10)
 
@@ -25,3 +27,9 @@ Jangan diasumsikan di dalam kode sampai diputuskan.
 - [ ] Bolehkah data Sirekap/Situng ditampilkan dengan label tidak resmi.
 - [ ] Lokasi, kecepatan unggah, dan pengelola NAS.
 - [ ] Ambang n minimum agar agregat survei boleh tampil per wilayah (fase 2).
+- [ ] Naik ke Next.js 16 atau tetap di 15.5.x? Dua kerentanan postcss (1 tinggi,
+      1 sedang) tersisa di salinan postcss yang dibundel Next dan hanya bisa
+      ditutup oleh Next 16.4.6, yang membawa perubahan memutus. Keduanya adalah
+      kerentanan pemrosesan CSS saat build (path traversal lewat sourceMappingURL
+      dan XSS pada keluaran stringify), bukan jalur yang tersentuh masukan
+      pengguna di dashboard ini.

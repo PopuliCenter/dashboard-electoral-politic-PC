@@ -18,7 +18,12 @@ docker compose up        # db (PostGIS), api (FastAPI), web (Next.js)
 | web | http://localhost:3000 | Next.js App Router |
 | api | http://localhost:8000/api/v1/health | FastAPI, cek koneksi database |
 | api (dokumentasi) | http://localhost:8000/docs | OpenAPI |
-| db | localhost:5432 | PostgreSQL 16 + PostGIS 3.4 |
+| db | localhost:**5433** | PostgreSQL 16 + PostGIS 3.4 |
+
+Ketiganya hanya terikat ke `127.0.0.1`, jadi tidak terbuka ke jaringan lokal.
+Port database di host sengaja 5433, bukan 5432: di mesin pengembang sering sudah
+ada PostgreSQL native di 5432, dan `psql localhost:5432` bisa mengenai database
+yang salah. Di dalam jaringan compose, `api` tetap menghubungi `db:5432`.
 
 ## Perintah
 
