@@ -6,16 +6,23 @@ Sumbernya `data/reference/party_colors.csv`:
     PKB,#RRGGBB,<dokumen identitas visual resmi>,<inisial pemeriksa>
 
 SDD bagian 14: warna harus mengikuti identitas visual partai dan tidak boleh
-ditetapkan berdasarkan asumsi. Karena itu kolom `color` boleh kosong. Partai
-tanpa warna terkonfigurasi memakai palet cadangan kontras tinggi yang ditandai
-`fallback`, supaya peta tetap terbaca tanpa mengaku sebagai identitas partai.
+ditetapkan berdasarkan asumsi. Karena itu kolom `color` boleh kosong.
+
+Partai tanpa warna resmi memakai cadangan NETRAL (gradasi abu-abu, keputusan
+pengguna) bertanda `fallback`. Abu-abu tidak cukup untuk membedakan 18 partai,
+jadi pembeda utamanya adalah NOMOR URUT partai pada tahun kontestasi itu, yang
+wajib ditampilkan frontend di legenda dan label wilayah bila `color_source`
+bernilai `fallback`. Rona khas partai (merah, kuning, hijau, biru, oranye) sengaja
+tidak dipakai supaya peta tidak terbaca sebagai partai lain.
+
+Perubahan berkas berlaku setelah layanan api di-restart (konfigurasi dibaca
+sekali per proses).
 """
 
 import hashlib
 import logging
-import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -28,32 +35,26 @@ logger = logging.getLogger(__name__)
 COLORS_FILE = "party_colors.csv"
 PARTIES_FILE = "parties.csv"
 COLUMNS = ("party_code", "color", "source", "verified_by")
-HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-# 20 warna kontras tinggi dari daftar Kelly (1965), tanpa putih dan hitam. Ini
-# bukan warna partai mana pun; hanya pembeda sementara.
+# Gradasi abu-abu netral, dari gelap ke terang. Bukan warna partai mana pun.
 FALLBACK_PALETTE: tuple[str, ...] = (
-    "#F3C300",
-    "#875692",
-    "#F38400",
-    "#A1CAF1",
-    "#BE0032",
-    "#C2B280",
-    "#848482",
-    "#008856",
-    "#E68FAC",
-    "#0067A5",
-    "#F99379",
-    "#604E97",
-    "#F6A600",
-    "#B3446C",
-    "#DCD300",
-    "#882D17",
-    "#8DB600",
-    "#654522",
-    "#E25822",
-    "#2B3D26",
+    "#3F3F46",
+    "#71717A",
+    "#A1A1AA",
+    "#52525B",
+    "#D4D4D8",
+    "#27272A",
+    "#8E8E96",
+    "#BDBDC4",
 )
+
+
+def _is_hex_color(value: str) -> bool:
+    return (
+        len(value) == 7
+        and value[0] == "#"
+        and all(c in "0123456789abcdefABCDEF" for c in value[1:])
+    )
 
 
 class PartyColorError(Exception):
@@ -70,15 +71,17 @@ class PartyColor:
 
 @dataclass(frozen=True)
 class PartyColorConfig:
-    # party_code -> warna terkonfigurasi (hanya yang terisi).
+    # party_code -> warna terkonfigurasi yang sah (hanya yang terisi).
     configured: Mapping[str, str]
     # Urutan kode partai untuk palet cadangan: urutan baris di parties.csv,
-    # supaya warna cadangan stabil dan tidak bertabrakan antarpartai.
+    # supaya warna cadangan stabil.
     order: Sequence[str]
+    # Masalah per baris; baris yang bermasalah diabaikan, sisanya tetap dipakai.
+    errors: Sequence[str] = field(default_factory=tuple)
 
     def color_for(self, party_code: str) -> PartyColor:
         if party_code in self.configured:
-            return PartyColor(self.configured[party_code].upper(), "config")
+            return PartyColor(self.configured[party_code], "config")
         if party_code in self.order:
             index = list(self.order).index(party_code)
         else:
@@ -87,46 +90,82 @@ class PartyColorConfig:
         return PartyColor(FALLBACK_PALETTE[index % len(FALLBACK_PALETTE)], "fallback")
 
 
-def load_party_colors(directory: Path) -> PartyColorConfig:
-    """Baca dan validasi konfigurasi warna. Melempar PartyColorError bila keliru."""
+def parse_party_colors(directory: Path, *, require_verified: bool = False) -> PartyColorConfig:
+    """Baca konfigurasi warna. Tidak melempar: masalah dikumpulkan di `errors`.
+
+    Baris yang keliru diabaikan; urutan parties.csv dan baris lain yang sah tetap
+    dipakai, supaya satu salah ketik tidak mengubah warna semua partai.
+    `require_verified` (produksi): warna tanpa `verified_by` tidak dipakai.
+    """
     errors: list[str] = []
     parties = read_csv(directory / PARTIES_FILE, errors)
     order = [row["party_code"] for _, row in parties.rows] if parties else []
 
     table = read_csv(directory / COLORS_FILE, errors)
     configured: dict[str, str] = {}
-    if table is not None and check_columns(table.name, table.columns, COLUMNS, errors):
-        seen: dict[str, int] = {}
-        for line, row in table.rows:
-            code = row["party_code"]
-            where = f"{COLORS_FILE}:{line}"
-            if code in seen:
-                errors.append(f"{where}: party_code {code} sudah ada di baris {seen[code]}")
-                continue
-            seen[code] = line
-            if order and code not in order:
-                errors.append(f"{where}: party_code {code!r} tidak ada di {PARTIES_FILE}")
-            color = row["color"]
-            if not color:
-                continue
-            if not HEX_COLOR.match(color):
-                errors.append(f"{where}: color {color!r} harus berformat #RRGGBB")
-            elif not row["source"]:
-                errors.append(f"{where}: warna {code} wajib punya source (identitas visual resmi)")
-            else:
-                configured[code] = color
-    if errors:
-        raise PartyColorError(errors)
-    return PartyColorConfig(configured, order)
+    if table is None or not check_columns(table.name, table.columns, COLUMNS, errors):
+        return PartyColorConfig({}, order, tuple(errors))
+
+    seen_code: dict[str, int] = {}
+    seen_color: dict[str, tuple[int, str]] = {}
+    fallback = {c.upper() for c in FALLBACK_PALETTE}
+    for line, row in table.rows:
+        code = row["party_code"]
+        where = f"{COLORS_FILE}:{line}"
+        if code in seen_code:
+            errors.append(f"{where}: party_code {code} sudah ada di baris {seen_code[code]}")
+            continue
+        seen_code[code] = line
+        if order and code not in order:
+            errors.append(f"{where}: party_code {code!r} tidak ada di {PARTIES_FILE}")
+            continue
+        color = row["color"].upper()
+        if not color:
+            continue
+        if not _is_hex_color(color):
+            errors.append(f"{where}: color {row['color']!r} harus berformat #RRGGBB")
+        elif not row["source"]:
+            errors.append(f"{where}: warna {code} wajib punya source (identitas visual resmi)")
+        elif color in fallback:
+            errors.append(
+                f"{where}: warna {code} {color} sama dengan abu-abu cadangan; "
+                "warna resmi tidak boleh tertukar dengan cadangan"
+            )
+        elif color in seen_color:
+            other_line, other_code = seen_color[color]
+            errors.append(
+                f"{where}: warna {code} {color} sama dengan {other_code} (baris {other_line}); "
+                "partai harus bisa dibedakan"
+            )
+        elif require_verified and not row["verified_by"]:
+            errors.append(f"{where}: warna {code} belum diverifikasi (verified_by kosong)")
+        else:
+            seen_color[color] = (line, code)
+            configured[code] = color
+    return PartyColorConfig(configured, order, tuple(errors))
+
+
+def load_party_colors(directory: Path, *, require_verified: bool = False) -> PartyColorConfig:
+    """Seperti parse_party_colors, tetapi melempar PartyColorError bila ada masalah."""
+    config = parse_party_colors(directory, require_verified=require_verified)
+    if config.errors:
+        raise PartyColorError(list(config.errors))
+    return config
 
 
 @lru_cache
 def get_party_colors() -> PartyColorConfig:
-    """Konfigurasi untuk API. Bila berkas keliru, semua partai memakai cadangan
-    dan galatnya dicatat: warna yang salah tidak sepadan dengan API yang mati."""
-    directory = Path(get_settings().reference_data_dir)
-    try:
-        return load_party_colors(directory)
-    except PartyColorError as exc:
-        logger.error("konfigurasi warna partai tidak sah, memakai warna cadangan: %s", exc)
-        return PartyColorConfig({}, [])
+    """Konfigurasi untuk API, dibaca sekali per proses.
+
+    Masalah per baris dicatat di log dan baris itu memakai cadangan; berkas
+    yang keliru tidak mematikan API. Di produksi, warna yang belum
+    diverifikasi tidak dipakai.
+    """
+    settings = get_settings()
+    config = parse_party_colors(
+        Path(settings.reference_data_dir),
+        require_verified=settings.app_env == "production",
+    )
+    for error in config.errors:
+        logger.error("konfigurasi warna partai: %s", error)
+    return config

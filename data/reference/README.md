@@ -7,7 +7,7 @@ Berkas acuan yang boleh masuk Git karena kecil dan tidak mengandung data individ
 | `parties.csv` | Partai nasional peserta Pemilu 2019 dan 2024, dengan nomor urut per pemilu | T2.5 | Terisi, **menunggu verifikasi peneliti** |
 | `elections.csv` | Enam kontestasi fase 1: Pilpres, DPR RI, DPRD Provinsi, masing-masing 2019 dan 2024 | T2.5 | Terisi, **menunggu verifikasi peneliti** |
 | `candidate_pairs.csv` | Pasangan calon presiden dan wakil presiden, dengan nomor urut | T2.5 | Terisi, **menunggu verifikasi peneliti** |
-| `party_colors.csv` | Warna partai `#RRGGBB` dari identitas visual resmi, dengan sumber | T4.5 | Kolom warna **kosong**; selama kosong peta memakai warna cadangan bertanda |
+| `party_colors.csv` | Warna partai `#RRGGBB` dari identitas visual resmi, dengan sumber dan `verified_by` | T4.5 | Kolom warna **kosong**; selama kosong peta memakai abu-abu netral dengan nomor urut sebagai pembeda. Diperiksa oleh `make seed-dry`; perubahan berlaku setelah layanan api di-restart (`docker compose restart api`). Di produksi warna tanpa `verified_by` tidak dipakai |
 | `kode_wilayah_jabar.csv` | Kode Kemendagri: provinsi, 27 kabupaten/kota, kecamatan | T1.3 | Belum ada |
 | `batas_wilayah_*.geojson` | Batas wilayah kab/kota dan kecamatan, dengan sumber dan tahun versi | T1.4 | Belum ada |
 

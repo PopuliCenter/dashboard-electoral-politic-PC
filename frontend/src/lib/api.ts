@@ -29,9 +29,13 @@ export type HealthResult =
 
 /**
  * Partai dari /parties. Warna selalu dari API (data/reference/party_colors.csv),
- * tidak pernah di-hard-code di frontend (T4.5). color_source "fallback" berarti
- * warna pembeda sementara, bukan identitas visual partai: tampilkan keterangannya
- * di legenda.
+ * tidak pernah di-hard-code di frontend (T4.5).
+ *
+ * color_source "fallback" = abu-abu netral sementara, BUKAN identitas visual
+ * partai, dan beberapa partai bisa berbagi abu-abu yang sama. Untuk partai
+ * seperti ini frontend WAJIB menampilkan nomor urut tahun kontestasi itu
+ * (ballot_number_2019 atau ballot_number_2024) di legenda dan label wilayah,
+ * karena nomor itulah pembeda utamanya (keputusan pengguna).
  */
 export type Party = {
   id: string;

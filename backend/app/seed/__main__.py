@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.database import get_engine, get_session_factory
+from app.core.party_colors import COLORS_FILE, parse_party_colors
 from app.seed.apply import ENTITIES, SeedReport, apply_reference_data
 from app.seed.reference import ReferenceDataError, check_verification, load_reference_data
 
@@ -43,6 +44,17 @@ async def run(data_dir: Path, *, dry_run: bool) -> int:
         warnings = check_verification(data, settings.app_env)
     except ReferenceDataError as exc:
         print(exc, file=sys.stderr)
+        return 1
+
+    # Warna partai (T4.5) tidak ditulis ke database, tetapi diperiksa di sini
+    # supaya salah ketik terlihat dengan berkas:baris, bukan hanya di log api.
+    colors = parse_party_colors(data_dir, require_verified=settings.app_env == "production")
+    if colors.errors:
+        print(
+            f"{len(colors.errors)} masalah pada {COLORS_FILE}:\n"
+            + "\n".join(f"  - {e}" for e in colors.errors),
+            file=sys.stderr,
+        )
         return 1
 
     try:
