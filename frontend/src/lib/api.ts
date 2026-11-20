@@ -75,6 +75,73 @@ export async function fetchCurrentUser(cookieHeader: string): Promise<CurrentUse
   }
 }
 
+export type DataStatus = "official" | "unofficial" | "internal_aggregate";
+
+export const dataStatusLabel: Record<DataStatus, string> = {
+  official: "Resmi",
+  unofficial: "Tidak resmi",
+  internal_aggregate: "Agregat internal",
+};
+
+export type VersionEvent = { action: string; at: string; details: Record<string, unknown> | null };
+
+export type DatasetVersion = {
+  id: string;
+  dataset_name: string;
+  version_number: number;
+  source_id: string;
+  source_name: string;
+  validation_status: "pending" | "passed" | "failed";
+  data_status: DataStatus;
+  record_count: number | null;
+  collected_at: string | null;
+  created_at: string;
+  file_reference: string | null;
+  notes: string | null;
+  current: boolean;
+  superseded_by: number | null;
+  record_kind: string | null;
+  election_type: string | null;
+  election_year: number | null;
+  region_levels: string[];
+  events: VersionEvent[];
+};
+
+export type DatasetSummary = {
+  dataset_name: string;
+  current: DatasetVersion | null;
+  latest_version: number;
+  version_count: number;
+};
+
+export type SourceItem = {
+  id: string;
+  name: string;
+  type: string;
+  url: string | null;
+  collection_method: string | null;
+  retrieved_at: string | null;
+  checksum_sha256: string | null;
+  notes: string | null;
+  version_count: number;
+};
+
+export type Authed<T> = { ok: true; data: T } | { ok: false; status: number | null };
+
+/** GET dari server Next.js dengan cookie sesi peramban; tidak pernah melempar. */
+export async function fetchAuthed<T>(path: string, cookieHeader: string): Promise<Authed<T>> {
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      cache: "no-store",
+      headers: { cookie: cookieHeader },
+    });
+    if (!response.ok) return { ok: false, status: response.status };
+    return { ok: true, data: (await response.json()) as T };
+  } catch {
+    return { ok: false, status: null };
+  }
+}
+
 /** Tidak pernah melempar: halaman harus tetap tampil walau API mati. */
 export async function fetchHealth(): Promise<HealthResult> {
   try {

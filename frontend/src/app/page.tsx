@@ -22,6 +22,9 @@ export default async function Home() {
             <span className="text-muted-foreground">
               {user.full_name} · {roleLabel[user.role]}
             </span>
+            <Link href="/data" className="font-medium underline underline-offset-4">
+              Data dan sumber
+            </Link>
             <LogoutButton />
           </>
         ) : (
