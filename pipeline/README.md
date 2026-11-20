@@ -44,3 +44,24 @@ Aturannya:
 - Promosi memetakan partai, paslon, kontestasi, dan wilayah lewat kode, bukan UUID.
   Data referensi dan wilayah harus sudah ada di produksi lebih dulu.
 - Versi yang lebih lama tidak bisa menimpa versi yang lebih baru di produksi.
+
+## Laporan kelengkapan (T3.5)
+
+```
+make completeness                                   # semua kontestasi, database produksi
+make completeness a="--db staging --detail"         # sebutkan wilayah yang belum lengkap
+make completeness a="--election legislative_dpr:2024 --format csv" > kelengkapan.csv
+```
+
+Per kontestasi dan tingkat wilayah (provinsi, kab/kota, kecamatan), terhadap
+wilayah yang berlaku pada hari pemungutan suara:
+
+- **Suara lengkap**: setiap partai peserta tahun itu (Pilpres: setiap paslon) punya
+  angka, termasuk angka 0. **Sebagian**: hanya sebagian. **Kosong**: tidak ada.
+- **Partisipasi**: berapa wilayah yang punya DPT, pengguna hak pilih, suara sah, dan
+  suara tidak sah, masing-masing.
+- **Status**: berapa wilayah yang datanya resmi, tidak resmi, atau agregat internal;
+  "campur" berarti satu wilayah punya lebih dari satu status.
+
+Laporan ini tidak menilai benar-salahnya angka (itu rekonsiliasi T3.3) dan tidak
+menerapkan ambang apa pun: ambang Gerbang 1 masih keputusan terbuka.

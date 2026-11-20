@@ -36,7 +36,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [ ] T3.2 Ekstraktor PDF/Excel per jenis dokumen → format impor baku. Hasil ekstraksi selalu masuk staging dulu.
 - [ ] T3.3 Skrip rekonsiliasi: total per kab/kota dibanding rekapitulasi resmi; keluaran laporan selisih.
 - [x] T3.4 Promosi staging → produksi hanya untuk dataset yang lolos; tulis `dataset_versions` dan `audit_logs`. **20 November 2026:** `make load`, `make datasets`, `make promote` (`backend/app/datasets/`); staging = database terpisah; diuji dengan data fiktif di dua database, 146 test lolos. Syarat rekonsiliasi T3.3 belum terpasang di gerbang promosi.
-- [ ] T3.5 Laporan kelengkapan per kontestasi dan tingkat wilayah.
+- [x] T3.5 Laporan kelengkapan per kontestasi dan tingkat wilayah. **20 November 2026:** `make completeness` (`backend/app/reports/`), teks atau CSV per wilayah, untuk produksi atau staging; diuji dengan data fiktif, 155 test lolos. Belum ada angka nyata: menunggu wilayah (T2.2) dan hasil (T3.2).
 
 **Gerbang 2:** selisih total per kabupaten/kota harus 0 untuk keenam kontestasi.
 

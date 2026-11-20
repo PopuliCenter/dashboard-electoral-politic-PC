@@ -32,6 +32,8 @@ Satu baris per keputusan. Keputusan gerbang (Gerbang 1, 2, 3 di `TASKS.md`) waji
 | 2026-11-20 | T3.4 — tabrakan | Dua dataset berbeda yang mengisi sel yang sama ditolak saat muat maupun promosi | Pilihan antara, misalnya, data resmi dan Sirekap untuk satu kecamatan adalah keputusan manusia, bukan urutan impor | Tim |
 | 2026-11-20 | T3.4 — gagal validasi | Berkas gagal validasi tidak menjadi versi dataset; percobaannya dicatat di `ingestion_jobs` dan `audit_logs` | `dataset_versions.data_status` wajib terisi, dan berkas gagal sering tidak punya status yang sah; mengisinya dengan nilai karangan menyesatkan | Tim |
 | 2026-11-20 | T3.4 — syarat promosi | Untuk sementara versi yang lolos validasi format langsung `passed`. Saat T3.3 selesai, muat menghasilkan `pending` dan hanya rekonsiliasi yang mengubahnya ke `passed` | Gerbang 2 mewajibkan selisih 0 per kab/kota sebelum data dipakai; gerbang promosi sudah memeriksa `validation_status`, jadi T3.3 tinggal mengisi status itu | Tim |
+| 2026-11-20 | T3.5 — definisi lengkap | Wilayah lengkap bila setiap partai peserta tahun itu (Pilpres: setiap paslon) punya baris, termasuk angka 0; partisipasi dihitung per kolom; status dilaporkan terpisah. Penyebutnya wilayah yang berlaku pada hari pemungutan suara | Kelengkapan dilaporkan terpisah dari akurasi (REVISI-v1.1 bagian 3). Baris yang tidak ada berarti tidak tersedia, bukan 0 (aturan data 1) | Tim |
+| 2026-11-20 | T3.5 — ambang | Laporan tidak menerapkan ambang dan tidak memutuskan Gerbang 1 | Ambang kelengkapan kecamatan masih keputusan terbuka. Gerbang 1 menghitung dokumen yang tersedia (T1.1); laporan ini menghitung data yang sudah dimuat | Tim |
 
 ## Keputusan terbuka (dari `REVISI-v1.1.md` bagian 10)
 
