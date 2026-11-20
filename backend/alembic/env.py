@@ -6,6 +6,7 @@ URL database tidak pernah ditulis di alembic.ini; selalu dari environment.
 import asyncio
 from logging.config import fileConfig
 
+from geoalchemy2 import alembic_helpers
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -22,6 +23,24 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# PostGIS dan ekstensinya (topology, tiger geocoder) membuat puluhan tabel di
+# luar skema aplikasi. Migrasi proyek ini tidak boleh menyentuhnya, jadi
+# autogenerate hanya melihat objek yang memang didefinisikan di app/models.
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    if type_ == "table":
+        if getattr(obj, "schema", None) not in (None, "public"):
+            return False
+        if reflected and name not in target_metadata.tables:
+            # Tabel milik ekstensi: abaikan, jangan pernah usulkan drop.
+            return False
+    if type_ == "index" and reflected:
+        table_name = getattr(getattr(obj, "table", None), "name", None)
+        if table_name is not None and table_name not in target_metadata.tables:
+            return False
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -30,13 +49,24 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
+        render_item=alembic_helpers.render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    # Batasi refleksi ke skema public supaya skema topology dan tiger
+    # milik PostGIS tidak ikut terbaca.
+    connection.exec_driver_sql("SET search_path TO public")
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+        render_item=alembic_helpers.render_item,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -49,6 +79,11 @@ async def run_async_migrations() -> None:
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        # SET search_path di do_run_migrations membuka transaksi implisit,
+        # sehingga transaksi milik Alembic menjadi no-op. Tanpa commit eksplisit
+        # ini, seluruh DDL ikut ter-rollback saat koneksi ditutup dan alembic
+        # tetap melaporkan sukses.
+        await connection.commit()
     await connectable.dispose()
 
 

@@ -24,7 +24,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 
 ## Tahap 2 — Skema dan wilayah (minggu 3–5)
 
-- [ ] T2.1 Migrasi Alembic untuk tabel inti (lihat skema di `CLAUDE.md`).
+- [x] T2.1 Migrasi Alembic untuk tabel inti (lihat skema di `CLAUDE.md`). **20 November 2026:** 14 tabel, `upgrade head` dan `downgrade base` pulang-pergi bersih, `alembic check` tanpa drift, 25 test lolos.
 - [ ] T2.2 Skrip impor wilayah + geometri; uji: 27 kab/kota, setiap kecamatan punya induk dan geometri valid (`ST_IsValid`).
 - [ ] T2.3 Tabel `region_crosswalk` 2019→2024 dan skrip pengisiannya; uji: setiap kecamatan 2019 terpetakan atau ditandai eksplisit.
 - [ ] T2.4 Bangun vector tiles (tippecanoe → PMTiles) untuk kab/kota dan kecamatan; simpan di `data/tiles/`.
