@@ -48,6 +48,38 @@ Langkah verifikasi:
    (khusus `parties.csv`) atau di pesan commit.
 5. Jalankan `make seed-dry` dan pastikan tidak ada kesalahan.
 
+### Yang sudah diperiksa silang, dan yang belum
+
+Pada 20 November 2026 isi ketiga berkas diperiksa silang lewat tiga jalur riset
+yang saling terpisah (dokumen KPU, liputan pengundian nomor urut, ensiklopedia
+berikut rujukannya). Hasilnya:
+
+- **Nomor urut dan keikutsertaan: sepakat di ketiga jalur**, untuk 16 partai
+  nasional 2019 dan 18 partai nasional 2024. Tidak ada satu nomor pun yang
+  diperselisihkan.
+- Tanggal pemungutan suara dan nomor urut paslon: sepakat.
+
+Itu pemeriksaan silang antar sumber publik, **bukan pengganti verifikasi
+peneliti**. Titik yang paling perlu dilihat langsung di dokumen aslinya:
+
+| Hal | Mengapa perlu dilihat |
+| --- | --- |
+| Lampiran SK 519/2022 (nomor urut 2024) | Tidak berhasil dibuka (JDIH KPU berulang kali tidak merespons). Nomor 1 sampai 24 dibaca dari Lampiran SK 552/2022, yang memuat ulang seluruh tabel, dan cocok dengan tiga situs KPU daerah |
+| SK 59, 81, 310 Tahun 2018 (nomor urut 2019) | Dibaca dari salinan pindaian di situs Mahkamah Konstitusi, bukan dari JDIH KPU |
+| Ejaan "Sandiaga Salahuddin Uno" | Mengikuti transkripsi SK 1142/2018 di situs pihak ketiga; risalah MK menulis "Salahudin". PDF asli SK belum terbaca |
+| Lampiran SK 1644/2023 (paslon 2024) | Belum terbaca. Nama diambil dari KPU Info Pemilu; putusan MK hanya menguatkan paslon 1 dan 2 |
+| Tanggal 17 April 2019 | Dari Lampiran PKPU 7/2017. PKPU itu kemudian diubah (antara lain PKPU 32/2018) dan jadwal perubahannya belum dibaca; tanggalnya dikuatkan risalah MK |
+
+Nama paslon ditulis seperti KPU menulisnya, tanpa gelar: "A. Muhaimin Iskandar"
+dan "M. Mahfud MD", bukan kepanjangannya. "MD" bagian dari nama, bukan gelar.
+
+### Nama partai berbeda antar dokumen KPU
+
+KPU sendiri tidak konsisten menulis nama partai. Kolom `notes` di `parties.csv`
+mencatat varian yang ditemukan, misalnya "Partai Golkar" dan "Partai Golongan
+Karya", atau "Partai PERINDO" dan "Partai Persatuan Indonesia". Karena itu
+ekstraktor (T3.2) mencocokkan partai lewat **nomor urut**, tidak lewat nama.
+
 ## Aturan menyunting
 
 - Simpan dari Excel sebagai **CSV UTF-8 (Comma delimited)**. Format lain membuat
