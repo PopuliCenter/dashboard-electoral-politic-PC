@@ -107,7 +107,7 @@ async def run_load(args: argparse.Namespace) -> int:
         f"{args.file.name}: dimuat ke staging sebagai {result.version.dataset_name} "
         f"v{result.version.version_number} ({result.record_count} baris)\n"
         f"  version_id {result.version.id}\n"
-        f"  promosikan: python -m app.datasets promote {result.version.id}"
+        "  status pending: promosi ditahan sampai rekonsiliasi (T3.3) lolos"
     )
     return 0
 
@@ -158,6 +158,8 @@ async def run_promote(args: argparse.Namespace) -> int:
     print("Mode uji: produksi tidak diubah." if args.dry_run else "Dipromosikan ke produksi.")
     print(f"  {report.dataset_name} v{report.version_number}  {report.scope}")
     print(f"  baris masuk     {report.inserted}")
+    for warning in report.warnings:
+        print(f"  ! {warning}")
     if report.replaced_versions:
         versions = ", ".join(f"v{n}" for n in report.replaced_versions)
         print(f"  baris diganti   {report.replaced} (dari {versions})")

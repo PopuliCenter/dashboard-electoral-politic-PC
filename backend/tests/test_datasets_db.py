@@ -67,11 +67,19 @@ async def _muat(
     *,
     dataset: str = DATASET,
     source: SourceInfo = SUMBER,
+    rekonsiliasi_lolos: bool = True,
 ) -> LoadResult:
+    """Muat ke staging. Secara bawaan juga mensimulasikan rekonsiliasi T3.3 yang
+    lolos (status `passed`), karena T3.3 belum ada dan test promosi butuh itu.
+    Pakai `rekonsiliasi_lolos=False` untuk melihat status asli hasil muat."""
     report = validate_file(tulis_csv(path, rows), await load_catalog(staging))
-    return await load_into_staging(
+    hasil = await load_into_staging(
         staging, report, dataset_name=dataset, source=source, file_reference=path.name
     )
+    if hasil.version is not None and rekonsiliasi_lolos:
+        hasil.version.validation_status = ValidationStatus.PASSED
+        await staging.flush()
+    return hasil
 
 
 def _dpr(*suara: tuple[str, str, str]) -> list[dict[str, str]]:
@@ -110,13 +118,17 @@ async def test_muat_berkas_lolos_menjadi_versi_dengan_barisnya(
 ) -> None:
     staging, _ = dua_db
     hasil = await _muat(
-        staging, tmp_path / "dpr.csv", _dpr(("00.01.02", "UJI_A", "10"), ("00.01", "UJI_C", "4"))
+        staging,
+        tmp_path / "dpr.csv",
+        _dpr(("00.01.02", "UJI_A", "10"), ("00.01", "UJI_C", "4")),
+        rekonsiliasi_lolos=False,
     )
 
     assert hasil.version is not None
     v = hasil.version
     assert (v.dataset_name, v.version_number, v.record_count) == (DATASET, 1, 2)
-    assert v.validation_status is ValidationStatus.PASSED
+    # Lolos validasi format saja; hanya rekonsiliasi T3.3 yang boleh membuatnya passed.
+    assert v.validation_status is ValidationStatus.PENDING
     assert v.data_status is DataStatus.OFFICIAL
     assert v.file_reference is not None and v.file_reference.startswith("dpr.csv sha256:")
 
@@ -152,6 +164,31 @@ async def test_berkas_gagal_validasi_tidak_menjadi_versi(
         )
     ).all()
     assert any(a.payload and a.payload.get("file") == "salah.csv" for a in audit)
+    # Percobaan gagal tidak meninggalkan sumber baru yang permanen.
+    assert (
+        await staging.scalar(select(DataSource).where(DataSource.source_name == SUMBER.source_name))
+    ) is None
+
+
+async def test_percobaan_gagal_dengan_sumber_baru_tanpa_jenis_tetap_tercatat(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, _ = dua_db
+    hasil = await _muat(
+        staging,
+        tmp_path / "salah.csv",
+        _dpr(("00.01.02", "UJI_B", "10")),
+        source=SourceInfo(source_name="Sumber Uji Tanpa Jenis"),
+    )
+    assert hasil.version is None
+    audit = (
+        await staging.scalars(
+            select(AuditLog).where(AuditLog.action == "dataset.load_staging_rejected")
+        )
+    ).all()
+    assert any(
+        a.payload and a.payload.get("source_name") == "Sumber Uji Tanpa Jenis" for a in audit
+    )
 
 
 async def test_muat_ulang_menambah_nomor_versi(
@@ -416,3 +453,102 @@ async def test_promosi_partisipasi_mempertahankan_angka_tidak_tersedia(
         780,
         20,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Review T3.4: rekonsiliasi, peringatan penggantian, masa berlaku wilayah
+# --------------------------------------------------------------------------- #
+
+
+async def test_versi_pending_ditahan_sampai_rekonsiliasi(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    hasil = await _muat(
+        staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")), rekonsiliasi_lolos=False
+    )
+    assert hasil.version is not None
+    with pytest.raises(DatasetError, match="belum direkonsiliasi"):
+        await promote_version(staging, produksi, hasil.version.id)
+    assert await produksi.get(DatasetVersion, hasil.version.id) is None
+
+
+async def test_versi_tidak_resmi_menggantikan_resmi_dengan_peringatan(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    v1 = await _muat(
+        staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10"), ("00.01", "UJI_C", "4"))
+    )
+    assert v1.version is not None
+    await promote_version(staging, produksi, v1.version.id)
+
+    v2 = await _muat(
+        staging,
+        tmp_path / "b.csv",
+        [
+            suara_partai("00.01.02", "UJI_A", "99", status="unofficial"),
+            suara_partai("00.01", "UJI_C", "1", status="unofficial"),
+        ],
+    )
+    assert v2.version is not None
+    assert any("official -> unofficial" in w and "staging" in w for w in v2.warnings)
+
+    laporan = await promote_version(staging, produksi, v2.version.id)
+    assert any("official -> unofficial" in w and "produksi" in w for w in laporan.warnings)
+    audit = await produksi.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_id == v2.version.id, AuditLog.action == "dataset.promote"
+        )
+    )
+    assert audit is not None and audit.payload is not None
+    assert audit.payload["replacement_warnings"] == laporan.warnings
+
+
+async def test_versi_lebih_sempit_menggantikan_dengan_peringatan(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    v1 = await _muat(
+        staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10"), ("00.01", "UJI_A", "10"))
+    )
+    assert v1.version is not None
+    await promote_version(staging, produksi, v1.version.id)
+
+    v2 = await _muat(staging, tmp_path / "b.csv", _dpr(("00.01.02", "UJI_A", "12")))
+    assert v2.version is not None
+    pesan = [w for w in v2.warnings if "lebih sedikit di staging" in w]
+    assert pesan and "1 dari 2 baris" in pesan[0] and "00.01" in pesan[0]
+
+    laporan = await promote_version(staging, produksi, v2.version.id)
+    pesan = [w for w in laporan.warnings if "lebih sedikit di produksi" in w]
+    assert pesan and "1 wilayah hilang seluruhnya: 00.01" in pesan[0]
+    assert await _suara_produksi(produksi, v2.version.id) == {("00.01.02", "UJI_A"): 12}
+
+
+async def test_versi_pengganti_yang_sama_luasnya_tanpa_peringatan(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    v1 = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert v1.version is not None
+    await promote_version(staging, produksi, v1.version.id)
+    v2 = await _muat(staging, tmp_path / "b.csv", _dpr(("00.01.02", "UJI_A", "11")))
+    assert v2.version is not None and v2.warnings == []
+    laporan = await promote_version(staging, produksi, v2.version.id)
+    assert laporan.warnings == []
+
+
+async def test_wilayah_produksi_yang_tidak_berlaku_menolak_promosi(
+    dua_db: tuple[AsyncSession, AsyncSession], tmp_path: Path
+) -> None:
+    staging, produksi = dua_db
+    wilayah = await produksi.get(Region, await _id_wilayah(produksi, "00.01.02"))
+    assert wilayah is not None
+    wilayah.valid_until = date(2023, 12, 31)  # sebelum pemungutan suara 2024-01-01
+    await produksi.flush()
+
+    hasil = await _muat(staging, tmp_path / "a.csv", _dpr(("00.01.02", "UJI_A", "10")))
+    assert hasil.version is not None
+    with pytest.raises(DatasetError, match="tidak berlaku pada hari pemungutan suara"):
+        await promote_version(staging, produksi, hasil.version.id)

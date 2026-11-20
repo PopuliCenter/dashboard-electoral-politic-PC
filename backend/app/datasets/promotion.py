@@ -23,7 +23,7 @@ Aturan:
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import cast
 
 from sqlalchemy import select, tuple_
@@ -38,6 +38,7 @@ from app.datasets.common import (
     check_conflicts,
     delete_rows,
     describe,
+    replacement_warnings,
     version_scope,
 )
 from app.importer.format import RecordKind
@@ -75,6 +76,7 @@ class PromotionReport:
     inserted: int = 0
     replaced: int = 0
     replaced_versions: list[int] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def _examples(items: Sequence[object]) -> str:
@@ -134,8 +136,17 @@ async def _production_election(production: AsyncSession, election: Election) -> 
 
 
 async def _map_regions(
-    staging: AsyncSession, production: AsyncSession, ids: set[uuid.UUID], errors: list[str]
+    staging: AsyncSession,
+    production: AsyncSession,
+    ids: set[uuid.UUID],
+    election: Election,
+    errors: list[str],
 ) -> dict[uuid.UUID, uuid.UUID]:
+    """Wilayah staging -> wilayah produksi dengan kode dan valid_from yang sama.
+
+    Wilayah produksi juga harus berlaku pada hari pemungutan suara kontestasi
+    itu: valid_until di produksi bisa saja berbeda dengan di staging.
+    """
     keys = {
         region_id: (code, valid_from)
         for region_id, code, valid_from in (
@@ -146,27 +157,34 @@ async def _map_regions(
         .tuples()
         .all()
     }
-    found = {
-        (code, valid_from): region_id
-        for region_id, code, valid_from in (
-            await production.execute(
-                select(Region.id, Region.region_code, Region.valid_from).where(
-                    tuple_(Region.region_code, Region.valid_from).in_(list(keys.values()))
-                )
+    day = election.election_date
+    found: dict[tuple[str, date], uuid.UUID] = {}
+    expired: list[str] = []
+    for region_id, code, valid_from, valid_until in (
+        await production.execute(
+            select(Region.id, Region.region_code, Region.valid_from, Region.valid_until).where(
+                tuple_(Region.region_code, Region.valid_from).in_(list(keys.values()))
             )
         )
-        .tuples()
-        .all()
-    }
+    ).tuples():
+        if day is not None and (valid_from > day or (valid_until and valid_until < day)):
+            expired.append(f"{code} (berlaku {valid_from} s.d. {valid_until})")
+            continue
+        found[(code, valid_from)] = region_id
     missing = sorted(
         f"{code} (berlaku {valid_from})"
         for code, valid_from in keys.values()
-        if (code, valid_from) not in found
+        if (code, valid_from) not in found and not any(e.startswith(f"{code} ") for e in expired)
     )
     if missing:
         errors.append(
             f"{len(missing)} wilayah belum ada di produksi: {_examples(missing)}; "
             "impor wilayah ke produksi lebih dulu"
+        )
+    if expired:
+        errors.append(
+            f"{len(expired)} wilayah di produksi tidak berlaku pada hari pemungutan suara "
+            f"{day}: {_examples(sorted(expired))}; samakan masa berlakunya dengan staging"
         )
     return {sid: found[key] for sid, key in keys.items() if key in found}
 
@@ -242,6 +260,13 @@ async def _check_promotable(
     if version is None:
         raise DatasetError([f"versi dataset {version_id} tidak ada di staging"])
     label = f"{version.dataset_name} v{version.version_number}"
+    if version.validation_status is ValidationStatus.PENDING:
+        raise DatasetError(
+            [
+                f"{label} belum direkonsiliasi (T3.3); promosi ditahan sampai rekonsiliasi "
+                "terhadap rekapitulasi resmi lolos"
+            ]
+        )
     if version.validation_status is not ValidationStatus.PASSED:
         raise DatasetError(
             [
@@ -302,7 +327,9 @@ async def promote_version(
     election = await _production_election(production, scope.election)
 
     errors: list[str] = []
-    regions = await _map_regions(staging, production, {r.region_id for r in staged_rows}, errors)
+    regions = await _map_regions(
+        staging, production, {r.region_id for r in staged_rows}, election, errors
+    )
     items: dict[uuid.UUID, uuid.UUID] = {}
     if kind is RecordKind.PARTY_VOTES:
         items = await _map_parties(
@@ -339,6 +366,9 @@ async def promote_version(
 
     # Semua pemeriksaan selesai sebelum satu baris pun ditulis.
     earlier_ids = [v.id for v in earlier]
+    report.warnings = await replacement_warnings(
+        production, kind, earlier, new_rows, version.data_status, where="produksi"
+    )
     await check_conflicts(
         production, kind, election.id, new_rows, where="produksi", ignore_versions=earlier_ids
     )
@@ -374,6 +404,7 @@ async def promote_version(
         "inserted": report.inserted,
         "replaced": report.replaced,
         "replaced_versions": report.replaced_versions,
+        "replacement_warnings": report.warnings,
     }
     production.add(
         IngestionJob(

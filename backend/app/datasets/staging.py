@@ -22,6 +22,7 @@ from app.datasets.common import (
     check_conflicts,
     delete_rows,
     describe,
+    replacement_warnings,
     version_scope,
 )
 from app.importer.validator import CandidateVote, PartyVote, Turnout, ValidationReport
@@ -276,7 +277,6 @@ async def load_into_staging(
     Tidak melakukan commit: pemanggil yang memutuskan commit atau rollback.
     """
     started = datetime.now(UTC)
-    data_source = await _source(session, source)
     audit: dict[str, object] = {
         "dataset_name": dataset_name,
         "file": file_reference,
@@ -286,11 +286,16 @@ async def load_into_staging(
     }
 
     if not report.passed or report.data_status is None:
+        # Percobaan gagal tetap dicatat, tetapi tidak membuat sumber baru: sumber
+        # yang tercatat hanya sumber yang benar-benar menghasilkan data.
+        known_source = await session.scalar(
+            select(DataSource.id).where(DataSource.source_name == source.source_name)
+        )
         session.add(
             IngestionJob(
                 job_type="load_staging",
                 status=JobStatus.FAILED,
-                source_id=data_source.id,
+                source_id=known_source,
                 started_at=started,
                 finished_at=datetime.now(UTC),
                 record_count=0,
@@ -301,12 +306,17 @@ async def load_into_staging(
             AuditLog(
                 action="dataset.load_staging_rejected",
                 entity_type="dataset_versions",
-                payload={**audit, "errors": report.errors[:MAX_ERRORS_STORED]},
+                payload={
+                    **audit,
+                    "source_name": source.source_name,
+                    "errors": report.errors[:MAX_ERRORS_STORED],
+                },
             )
         )
         await session.flush()
         return LoadResult(None, 0, list(report.errors), list(report.warnings))
 
+    data_source = await _source(session, source)
     election = await _election(session, report)
     await _check_same_scope_as_before(session, dataset_name, report, election)
 
@@ -321,9 +331,9 @@ async def load_into_staging(
         version_number=(last_number or 0) + 1,
         collected_at=source.retrieved_at or data_source.retrieved_at,
         record_count=len(report.records),
-        # Lolos validasi format. Rekonsiliasi T3.3 nanti menjadi syarat tambahan
-        # sebelum status ini boleh `passed` (lihat docs/decisions.md).
-        validation_status=ValidationStatus.PASSED,
+        # Lolos validasi format saja. Hanya rekonsiliasi T3.3 yang boleh mengubahnya
+        # menjadi `passed`; sampai itu ada, promosi ditahan (keputusan pengguna).
+        validation_status=ValidationStatus.PENDING,
         data_status=report.data_status,
         file_reference=f"{file_reference} sha256:{report.checksum}",
     )
@@ -336,15 +346,17 @@ async def load_into_staging(
     earlier = list(
         (
             await session.scalars(
-                select(DatasetVersion.id).where(
+                select(DatasetVersion).where(
                     DatasetVersion.dataset_name == dataset_name, DatasetVersion.id != version.id
                 )
             )
         ).all()
     )
-    replaced = await delete_rows(session, report.kind, earlier) if earlier else 0
-
     rows = await _build_rows(session, report, election, version, report.data_status)
+    replacement = await replacement_warnings(
+        session, report.kind, earlier, rows, report.data_status, where="staging"
+    )
+    replaced = await delete_rows(session, report.kind, [v.id for v in earlier]) if earlier else 0
     await check_conflicts(session, report.kind, election.id, rows, where="staging")
     session.add_all(rows)
     session.add(
@@ -368,8 +380,9 @@ async def load_into_staging(
                 "version_number": version.version_number,
                 "record_count": len(rows),
                 "replaced": replaced,
+                "replacement_warnings": replacement,
             },
         )
     )
     await session.flush()
-    return LoadResult(version, len(rows), [], list(report.warnings))
+    return LoadResult(version, len(rows), [], [*replacement, *report.warnings])

@@ -125,11 +125,13 @@ def test_teks_memuat_persentase_berkoma_dan_rincian() -> None:
 
 
 def test_csv_satu_baris_per_wilayah() -> None:
-    lines = render_csv(summarize([_dpr()])).splitlines()
-    assert lines[0].startswith("election_type,election_year,region_level,region_code")
+    teks = render_csv(summarize([_dpr()]))
+    assert teks.startswith("\ufeff")
+    lines = teks.lstrip("\ufeff").splitlines()
+    assert lines[0].startswith("election_type;election_year;region_level;region_code")
     assert len(lines) == 1 + 5
-    kec_2 = next(line for line in lines if ",00.01.02," in line)
-    assert ",sebagian,UJI_C," in kec_2
-    assert kec_2.endswith("official;unofficial")
-    kab = next(line for line in lines if ",00.01," in line)
-    assert ",ya,tidak,ya,tidak," in kab
+    kec_2 = next(line for line in lines if ";00.01.02;" in line)
+    assert ";sebagian;UJI_C;" in kec_2
+    assert kec_2.endswith(";official, unofficial")
+    kab = next(line for line in lines if ";00.01;" in line)
+    assert ";ya;tidak;ya;tidak;" in kab

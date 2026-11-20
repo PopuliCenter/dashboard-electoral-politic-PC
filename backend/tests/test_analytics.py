@@ -16,6 +16,7 @@ from app.services.analytics import (
     rank,
     swing,
     turnout,
+    unit_index,
     unit_of,
     vote_share,
 )
@@ -111,6 +112,8 @@ def test_seri_di_puncak_tidak_dipilih_acak() -> None:
     assert margin(suara, PESERTA) == 0
     hasil = rank(suara, PESERTA)
     assert not isinstance(hasil, Unavailable) and hasil.tie
+    # Peringkat kedua adalah sesama pemuncak, bukan UJI_C di peringkat ketiga.
+    assert hasil.runner_up_votes == 400
 
 
 def test_seri_di_peringkat_kedua_tidak_mengubah_margin() -> None:
@@ -187,9 +190,14 @@ def test_kode_yang_sama_di_kedua_sisi_tidak_tertukar() -> None:
 
 
 def test_wilayah_tanpa_padanan() -> None:
-    units = matched_units([("K1", "K1")])
-    assert unit_of("K9", units, side="new") is Unavailable.UNMATCHED
-    assert unit_of("K1", units, side="old") == units[0]
+    units = matched_units([("K1", "K1"), ("K2", "K2a"), ("K2", "K2b")])
+    baru = unit_index(units, side="new")
+    lama = unit_index(units, side="old")
+    assert unit_of("K9", baru) is Unavailable.UNMATCHED
+    assert unit_of("K1", lama) == MatchedUnit(frozenset({"K1"}), frozenset({"K1"}))
+    assert unit_of("K2a", baru) is unit_of("K2b", baru)
+    with pytest.raises(ValueError, match="side"):
+        unit_index(units, side="lama")
 
 
 # --------------------------------------------------------------------------- #

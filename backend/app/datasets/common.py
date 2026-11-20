@@ -9,7 +9,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.importer.format import RecordKind
-from app.models import CandidateResult, DatasetVersion, Election, ElectionResult, RegionTurnout
+from app.models import (
+    CandidateResult,
+    DatasetVersion,
+    Election,
+    ElectionResult,
+    Region,
+    RegionTurnout,
+)
+from app.models.enums import DataStatus
 
 ResultRow = ElectionResult | CandidateResult | RegionTurnout
 ResultModel = type[ElectionResult] | type[CandidateResult] | type[RegionTurnout]
@@ -128,3 +136,65 @@ async def check_conflicts(
             for v in owners
         ]
     )
+
+
+# Berapa contoh kode wilayah yang disebut di peringatan.
+MAX_EXAMPLE_REGIONS = 10
+
+
+async def replacement_warnings(
+    session: AsyncSession,
+    kind: RecordKind,
+    earlier: Sequence[DatasetVersion],
+    new_rows: Sequence[ResultRow],
+    new_status: DataStatus,
+    *,
+    where: str,
+) -> list[str]:
+    """Peringatan bila versi baru mengubah status data atau mencakup lebih sedikit.
+
+    Versi baru tetap boleh menggantikan versi lama (keputusan pengguna); yang
+    wajib adalah perubahan itu terlihat sebelum dan sesudah terjadi. Dihitung
+    SEBELUM baris lama dihapus.
+    """
+    if not earlier:
+        return []
+    warnings: list[str] = []
+    old_statuses = sorted({v.data_status.value for v in earlier} - {new_status.value})
+    if old_statuses:
+        warnings.append(
+            f"status data berubah di {where}: {', '.join(old_statuses)} -> {new_status.value}"
+        )
+
+    model = MODEL_BY_KIND[kind]
+    old_rows = cast(
+        Sequence[ResultRow],
+        (
+            await session.scalars(
+                select(model).where(model.dataset_version_id.in_([v.id for v in earlier]))
+            )
+        ).all(),
+    )
+    new_keys = {row_key(kind, row) for row in new_rows}
+    lost_rows = [row for row in old_rows if row_key(kind, row) not in new_keys]
+    if not lost_rows:
+        return warnings
+
+    new_regions = {row.region_id for row in new_rows}
+    lost_region_ids = {row.region_id for row in lost_rows} - new_regions
+    codes = sorted(
+        (
+            await session.scalars(select(Region.region_code).where(Region.id.in_(lost_region_ids)))
+        ).all()
+    )
+    examples = ", ".join(codes[:MAX_EXAMPLE_REGIONS])
+    if len(codes) > MAX_EXAMPLE_REGIONS:
+        examples += f", dan {len(codes) - MAX_EXAMPLE_REGIONS} lainnya"
+    message = (
+        f"versi baru mencakup lebih sedikit di {where}: {len(lost_rows)} dari "
+        f"{len(old_rows)} baris versi lama tidak ada lagi"
+    )
+    if codes:
+        message += f"; {len(codes)} wilayah hilang seluruhnya: {examples}"
+    warnings.append(message)
+    return warnings

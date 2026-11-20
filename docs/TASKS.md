@@ -29,6 +29,7 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [ ] T2.3 Tabel `region_crosswalk` 2019→2024 dan skrip pengisiannya; uji: setiap kecamatan 2019 terpetakan atau ditandai eksplisit.
 - [ ] T2.4 Bangun vector tiles (tippecanoe → PMTiles) untuk kab/kota dan kecamatan; simpan di `data/tiles/`.
 - [x] T2.5 Seed `parties` dan `elections` (6 kontestasi: 3 jenis × 2 tahun); tandai partai yang hanya ikut salah satu pemilu. **20 November 2026:** 20 partai, 6 kontestasi, 5 paslon; seed idempoten dan tercatat di `audit_logs`, 78 test lolos. **Data menunggu verifikasi peneliti** (`verified_by` kosong; produksi menolak).
+- [ ] T2.6 Dapil dan peserta per dapil (DPR RI, DPRD Provinsi; 2019 dan 2024): daftar dapil, pemetaan kab/kota/kecamatan ke dapil, dan partai yang punya calon per dapil, semuanya lewat migrasi Alembic dan data referensi. **Butuh dokumen KPU:** penetapan dapil dan Daftar Calon Tetap per dapil (lihat T1.1). Sesudahnya: T3.5 dan T4.2 memakai peserta per dapil, dan validator T3.1 menolak suara partai di dapil yang tidak diikutinya. Keputusan: `docs/decisions.md`, "Review T3.4 — peserta per dapil".
 
 ## Tahap 3 — Data elektoral (minggu 6–9)
 

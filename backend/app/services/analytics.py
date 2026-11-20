@@ -136,8 +136,12 @@ def rank[K: Hashable](
 
     top = max(present.values())
     leaders = tuple(sorted((k for k, v in present.items() if v == top), key=repr))
-    rest = [v for k, v in present.items() if k not in leaders]
-    runner_up = max(rest) if rest else (top if len(leaders) > 1 else None)
+    if len(leaders) > 1:
+        # Seri: peringkat kedua adalah sesama pemuncak, bukan peringkat ketiga.
+        runner_up: int | None = top
+    else:
+        rest = [v for k, v in present.items() if k not in leaders]
+        runner_up = max(rest) if rest else None
     return Ranking(leaders, top, runner_up)
 
 
@@ -276,11 +280,25 @@ def party_swing[R: Hashable](
     return results
 
 
+def unit_index[R: Hashable](
+    units: Iterable[MatchedUnit[R]], *, side: str
+) -> dict[R, MatchedUnit[R]]:
+    """Wilayah -> unit padanannya, untuk satu sisi ("old" atau "new").
+
+    Dibangun sekali lalu dipakai untuk banyak wilayah. Wilayah yang tidak ada di
+    indeks belum dipadankan.
+    """
+    if side not in ("old", "new"):
+        raise ValueError(f"side harus 'old' atau 'new', bukan {side!r}")
+    return {
+        region: unit
+        for unit in units
+        for region in (unit.old_regions if side == "old" else unit.new_regions)
+    }
+
+
 def unit_of[R: Hashable](
-    region: R, units: Iterable[MatchedUnit[R]], *, side: str
+    region: R, index: Mapping[R, MatchedUnit[R]]
 ) -> MatchedUnit[R] | Unavailable:
-    """Unit padanan sebuah wilayah (`side` "old" atau "new"), atau `UNMATCHED`."""
-    for unit in units:
-        if region in (unit.old_regions if side == "old" else unit.new_regions):
-            return unit
-    return Unavailable.UNMATCHED
+    """Unit padanan sebuah wilayah dari `unit_index`, atau `UNMATCHED`."""
+    return index.get(region, Unavailable.UNMATCHED)

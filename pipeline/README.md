@@ -36,9 +36,16 @@ Aturannya:
 
 - Berkas divalidasi (T3.1) sebelum dimuat. Yang gagal tidak menjadi versi dataset;
   percobaannya tercatat di `ingestion_jobs` dan `audit_logs`.
+- Versi yang dimuat berstatus `pending`. **Promosi ditahan** sampai rekonsiliasi T3.3
+  terhadap rekapitulasi resmi lolos dan mengubahnya menjadi `passed`. Tidak ada
+  perintah untuk mengubah status itu dengan tangan.
 - Satu `--dataset` selalu berisi satu jenis data dan satu kontestasi. Memuat ulang
   dataset yang sama menghasilkan versi berikutnya yang **menggantikan** baris versi
-  sebelumnya, di staging maupun saat dipromosikan ke produksi.
+  sebelumnya, di staging maupun saat dipromosikan ke produksi. Bila versi baru
+  mengubah `data_status` (misalnya official -> unofficial) atau mencakup lebih sedikit
+  baris dan wilayah, `load`, `promote --dry-run`, dan `promote` mencetak peringatan
+  beserta contoh kode wilayahnya, dan peringatan itu ikut tercatat di `audit_logs`.
+  Baca peringatannya sebelum promosi sungguhan.
 - Satu sel (kontestasi × wilayah × partai/paslon) hanya boleh punya satu angka. Bila
   dataset lain sudah mengisinya, muat atau promosi ditolak; manusia yang memutuskan.
 - Promosi memetakan partai, paslon, kontestasi, dan wilayah lewat kode, bukan UUID.

@@ -139,9 +139,15 @@ CSV_COLUMNS = (
 
 
 def render_csv(report: CompletenessReport) -> str:
-    """Satu baris per wilayah per kontestasi, untuk dibuka di Excel."""
+    """Satu baris per wilayah per kontestasi, untuk dibuka di Excel.
+
+    Titik koma dan BOM UTF-8: Excel berlokal Indonesia memakai titik koma sebagai
+    pemisah daftar dan baru membaca huruf non-ASCII dengan benar bila ada BOM.
+    Pembaca CSV proyek ini menerima keduanya.
+    """
     buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
+    buffer.write("\ufeff")
+    writer = csv.writer(buffer, delimiter=";", lineterminator="\n")
     writer.writerow(CSV_COLUMNS)
     for d in report.details:
         writer.writerow(
@@ -152,9 +158,9 @@ def render_csv(report: CompletenessReport) -> str:
                 d.region.code,
                 d.region.name,
                 d.coverage.value,
-                ";".join(d.missing_items),
+                ", ".join(d.missing_items),
                 *("ya" if f in d.turnout_fields else "tidak" for f in TURNOUT_FIELDS),
-                ";".join(sorted(s.value for s in d.statuses)),
+                ", ".join(sorted(s.value for s in d.statuses)),
             ]
         )
     return buffer.getvalue()

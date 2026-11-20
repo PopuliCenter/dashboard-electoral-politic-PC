@@ -4,6 +4,7 @@ Test unit tidak boleh butuh database. Test yang butuh database memakai fixture
 `session`, ditandai `integration`, dan otomatis dilewati bila database mati.
 """
 
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -65,7 +66,13 @@ async def staging_session() -> AsyncGenerator[AsyncSession, None]:
     """
     url = get_settings().staging_database_url
     if not url:
-        pytest.skip("STAGING_DATABASE_URL kosong")
+        # Di CI, test promosi yang terlewati diam-diam sama buruknya dengan gagal.
+        if os.environ.get("CI"):
+            pytest.fail("STAGING_DATABASE_URL kosong di CI; test T3.4 tidak boleh dilewati")
+        pytest.skip(
+            "STAGING_DATABASE_URL kosong; kontainer api yang dibuat sebelum T3.4 perlu "
+            "dibuat ulang (docker compose up -d --force-recreate api)"
+        )
     if url == get_settings().database_url:
         pytest.skip("STAGING_DATABASE_URL sama dengan DATABASE_URL")
     async for s in _rollback_session(url):
