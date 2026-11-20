@@ -1,0 +1,14 @@
+# Satu gaya akhir baris untuk semua orang. Tanpa ini, editor dan skrip di
+# Windows menulis CRLF, diff menjadi tidak terbaca, dan skrip shell dengan CRLF
+# gagal jalan di dalam kontainer Linux.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary
+*.pmtiles binary
+*.gpkg binary
