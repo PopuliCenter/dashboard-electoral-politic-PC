@@ -123,6 +123,10 @@ class SwingUnit(BaseModel):
     new_share: Percentage
     swing: Percentage = Field(description="Poin persentase, baru dikurangi lama")
     data_statuses: list[DataStatus]
+    source_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Sumber semua angka yang dipakai unit ini (rincian di `sources`)",
+    )
 
 
 class CompareOut(BaseModel):

@@ -32,6 +32,7 @@ from app.schemas.electoral import (
     Percentage,
     Source,
 )
+from app.services.analytics import Unavailable
 
 ExportFormat = Literal["csv", "xlsx"]
 Cell = str | int | float | None
@@ -70,6 +71,16 @@ def _source_cells(source_id: uuid.UUID | None, sources: Mapping[uuid.UUID, Sourc
     return [source.name if source else None, source.url if source else None]
 
 
+def _many_source_cells(
+    source_ids: Sequence[uuid.UUID], sources: Mapping[uuid.UUID, Source]
+) -> list[Cell]:
+    """Nama dan URL beberapa sumber dalam satu sel, dipisah ' | '."""
+    found = [sources[i] for i in source_ids if i in sources]
+    if not found:
+        return [None, None]
+    return [" | ".join(s.name for s in found), " | ".join(s.url or "" for s in found)]
+
+
 # --------------------------------------------------------------------------- #
 # Perataan respons
 # --------------------------------------------------------------------------- #
@@ -96,6 +107,9 @@ def election_results_table(data: ElectionResultsOut) -> Table:
             "source_name",
             "source_url",
             "valid_votes",
+            # Status baris partisipasi tempat valid_votes berasal; bisa berbeda dengan
+            # data_status suara peserta di baris yang sama.
+            "valid_votes_status",
             "turnout",
             "turnout_status",
             "turnout_unavailable",
@@ -103,6 +117,7 @@ def election_results_table(data: ElectionResultsOut) -> Table:
             "leader_tie",
             "margin",
             "leader_unavailable",
+            "leader_status",
         ],
         sources=data.sources,
     )
@@ -124,17 +139,25 @@ def election_results_table(data: ElectionResultsOut) -> Table:
                     item.data_status.value if item.data_status else None,
                     *_source_cells(item.source_id, sources),
                     t.valid_votes,
+                    t.data_status.value if t.data_status else None,
                     *_pct(t.turnout),
                     " / ".join(leader.keys) or None,
                     leader.tie if leader.keys else None,
                     leader.margin,
                     leader.unavailable,
+                    leader.data_status.value if leader.data_status else None,
                 ]
             )
     return table
 
 
 def compare_table(data: CompareOut) -> Table:
+    """Satu baris per unit padanan, ditambah satu baris per wilayah tanpa padanan.
+
+    Wilayah tanpa padanan ditulis sebagai baris (bukan hanya catatan XLSX) supaya
+    CSV juga menunjukkan wilayah mana yang dikeluarkan dari swing dan alasannya.
+    """
+    sources = {s.id: s for s in data.sources}
     table = Table(
         title=f"Swing {data.party.code} {data.election_type.value} {data.from_year}-{data.to_year}",
         columns=[
@@ -155,6 +178,8 @@ def compare_table(data: CompareOut) -> Table:
             "swing_status",
             "swing_unavailable",
             "data_statuses",
+            "source_names",
+            "source_urls",
         ],
         sources=data.sources,
         notes=[
@@ -182,8 +207,38 @@ def compare_table(data: CompareOut) -> Table:
                 *_pct(unit.new_share),
                 *_pct(unit.swing),
                 ", ".join(s.value for s in unit.data_statuses) or None,
+                *_many_source_cells(unit.source_ids, sources),
             ]
         )
+    unmatched = Unavailable.UNMATCHED.value
+    for side, codes in (
+        ("old", data.unmatched_old_region_codes),
+        ("new", data.unmatched_new_region_codes),
+    ):
+        for code in codes:
+            table.rows.append(
+                [
+                    data.election_type.value,
+                    data.party.code,
+                    data.from_year,
+                    data.to_year,
+                    data.level.value,
+                    code if side == "old" else None,
+                    code if side == "new" else None,
+                    None,
+                    None,
+                    unmatched,
+                    None,
+                    None,
+                    unmatched,
+                    None,
+                    None,
+                    unmatched,
+                    None,
+                    None,
+                    None,
+                ]
+            )
     return table
 
 
@@ -262,7 +317,7 @@ def to_xlsx(table: Table, *, exported_by: str, filters: Sequence[tuple[str, str]
     sources = workbook.create_sheet("Sumber")
     sources.append(["source_name", "source_type", "source_url"])
     for s in table.sources:
-        sources.append([neutralize(s.name), neutralize(s.type), s.url])
+        sources.append([neutralize(s.name), neutralize(s.type), neutralize(s.url)])
 
     notes = workbook.create_sheet("Keterangan")
     for label, value in [

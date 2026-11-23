@@ -322,6 +322,9 @@ async def test_swing_lewat_padanan_wilayah(api: AsyncClient, session: AsyncSessi
     assert unit["new_share"]["value"] == 75.0  # 300 / 400
     assert unit["swing"]["value"] == pytest.approx(35.0)
     assert body["unmatched_old_region_codes"] == []
+    # Setiap unit menyebut sumbernya sendiri, dan semuanya terdaftar di `sources`.
+    assert unit["source_ids"]
+    assert set(unit["source_ids"]) <= {s["id"] for s in body["sources"]}
 
 
 async def test_partai_baru_tidak_punya_swing(api: AsyncClient, session: AsyncSession) -> None:

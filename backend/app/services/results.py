@@ -434,6 +434,8 @@ class _PartyArea:
     votes: dict[uuid.UUID, _Vote]
     statuses: dict[uuid.UUID, set[DataStatus]]
     sources: set[uuid.UUID]
+    # Sumber per wilayah, supaya tiap unit swing bisa menyebut sumbernya sendiri.
+    region_sources: dict[uuid.UUID, set[uuid.UUID]]
 
 
 async def _party_area(
@@ -442,7 +444,7 @@ async def _party_area(
     ids = [r.id for r in regions]
     votes = await _votes(session, election, ids, party_id=party.id)
     turnouts = await _turnouts(session, election, ids)
-    area = _PartyArea({}, {}, {}, set())
+    area = _PartyArea({}, {}, {}, set(), {})
     for region_id in ids:
         vote = votes.get(region_id, {}).get(party.party_code)
         row = turnouts.get(region_id)
@@ -451,13 +453,15 @@ async def _party_area(
             valid_votes=row.valid_votes if row else None,
         )
         region_statuses = area.statuses.setdefault(region_id, set())
+        region_sources = area.region_sources.setdefault(region_id, set())
         if vote:
             area.votes[region_id] = vote
             region_statuses.add(vote.status)
-            area.sources.add(vote.source_id)
+            region_sources.add(vote.source_id)
         if row:
             region_statuses.add(row.data_status)
-            area.sources.add(row.source_id)
+            region_sources.add(row.source_id)
+        area.sources |= region_sources
     return area
 
 
@@ -567,6 +571,9 @@ async def compare(
         statuses = {s for r in unit.old_regions for s in old.statuses.get(r, set())} | {
             s for r in unit.new_regions for s in new.statuses.get(r, set())
         }
+        unit_sources = {s for r in unit.old_regions for s in old.region_sources.get(r, set())} | {
+            s for r in unit.new_regions for s in new.region_sources.get(r, set())
+        }
         # Per unit, supaya satu unit berdata mustahil tidak menjatuhkan seluruh respons.
         try:
             value = _as_percentage(party_swing(swing_input, [unit])[unit], weakest_status(statuses))
@@ -580,6 +587,7 @@ async def compare(
                 new_share=side_share(unit.new_regions, new),
                 swing=value,
                 data_statuses=sorted(statuses),
+                source_ids=sorted(unit_sources, key=str),
             )
         )
 

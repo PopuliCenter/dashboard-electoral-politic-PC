@@ -6,6 +6,7 @@
 
 import csv
 import io
+from datetime import date
 
 import pytest
 from httpx import AsyncClient
@@ -13,8 +14,9 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, Party
+from app.models import AuditLog, Party, Region
 from app.models.enums import ElectionType
+from app.services.analytics import Unavailable
 from tests.test_api_electoral import PREFIX, SUMBER, _election_id, _id, api  # noqa: F401
 
 pytestmark = pytest.mark.integration
@@ -41,6 +43,9 @@ async def test_ekspor_csv_hasil_kontestasi(api: AsyncClient, session: AsyncSessi
     assert a["vote_share_status"] == "official"
     assert a["source_name"] == SUMBER.source_name and a["source_url"] == SUMBER.source_url
     assert (a["leader"], a["margin"]) == ("UJI_A", "200")
+    # Status penyebut dan status pemimpin ikut tertulis, terpisah dari status suara.
+    assert (a["valid_votes"], a["valid_votes_status"]) == ("400", "official")
+    assert a["leader_status"] == "official"
 
 
 async def test_ekspor_angka_tidak_tersedia_kosong_bukan_nol(
@@ -79,7 +84,47 @@ async def test_ekspor_xlsx_swing(api: AsyncClient, session: AsyncSession) -> Non
     )
     assert row["old_region_codes"] == "00.01.01" and row["new_region_codes"] == "00.01.02"
     assert row["swing_points"] == pytest.approx(35.0)
+    assert row["source_names"] == SUMBER.source_name
+    assert row["source_urls"] == SUMBER.source_url
     assert {r[0].value for r in workbook["Sumber"].iter_rows(min_row=2)} == {SUMBER.source_name}
+
+
+async def test_ekspor_swing_menulis_wilayah_tanpa_padanan(
+    api: AsyncClient, session: AsyncSession
+) -> None:
+    """Wilayah yang dikeluarkan dari swing tetap tampak di CSV, dengan alasannya."""
+    kab = await _id(session, Region, Region.region_code, "00.01")
+    session.add(
+        Region(
+            region_code="00.01.05",
+            region_name="Kecamatan Uji Tanpa Padanan",
+            region_level="district",
+            parent_id=kab,
+            valid_from=date(2019, 1, 2),
+        )
+    )
+    await session.flush()
+    party = await _id(session, Party, Party.party_code, "UJI_A")
+    rows = _rows(
+        (
+            await api.get(
+                f"{PREFIX}/elections/compare/export",
+                params={
+                    "election_type": "legislative_dpr",
+                    "party_id": str(party),
+                    "level": "district",
+                },
+            )
+        ).content
+    )
+    tanpa_padanan = [r for r in rows if r["swing_unavailable"] == Unavailable.UNMATCHED.value]
+    # 00.01.05 berlaku di 2024 tetapi tidak punya baris padanan.
+    assert ("", "00.01.05") in {
+        (r["old_region_codes"], r["new_region_codes"]) for r in tanpa_padanan
+    }
+    assert all(r["swing_points"] == "" and r["data_statuses"] == "" for r in tanpa_padanan)
+    # Unit yang terpadankan tetap ada di samping baris tanpa padanan.
+    assert any(r["swing_points"] for r in rows)
 
 
 async def test_ekspor_hasil_partai_dan_jejak_audit(api: AsyncClient, session: AsyncSession) -> None:

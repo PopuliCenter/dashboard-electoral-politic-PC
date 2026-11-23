@@ -2,9 +2,11 @@
 
 import csv
 import io
+import uuid
 
 from openpyxl import load_workbook
 
+from app.schemas.electoral import Source
 from app.services.export import Table, neutralize, to_csv, to_xlsx
 
 
@@ -51,3 +53,16 @@ def test_xlsx_berisi_tiga_lembar_dan_sel_angka() -> None:
     keterangan = {row[0].value: row[1].value for row in workbook["Keterangan"].iter_rows()}
     assert keterangan["Diekspor oleh"] == "uji@uji.invalid"
     assert keterangan["Tingkat"] == "district"
+
+
+def test_url_sumber_di_xlsx_dinetralkan() -> None:
+    """URL sumber berasal dari masukan impor; ia juga bisa berbentuk formula."""
+    table = _table()
+    table.sources = [
+        Source(id=uuid.uuid4(), name="Dokumen Uji", type="uji", url='=HYPERLINK("x")'),
+        Source(id=uuid.uuid4(), name="Tanpa URL", type="uji", url=None),
+    ]
+    raw = to_xlsx(table, exported_by="uji@uji.invalid", filters=[])
+    sumber = list(load_workbook(io.BytesIO(raw))["Sumber"].iter_rows(min_row=2, values_only=True))
+    assert sumber[0][2] == '\'=HYPERLINK("x")'
+    assert sumber[1][2] is None
