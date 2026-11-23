@@ -122,6 +122,59 @@ async def clear_throttles(session: AsyncSession, user_id: uuid.UUID) -> None:
     await session.execute(delete(LoginThrottle).where(LoginThrottle.user_id == user_id))
 
 
+async def _check_credentials(
+    session: AsyncSession,
+    settings: Settings,
+    email: str,
+    password: str,
+    *,
+    throttle_key: str,
+    ip_address: str | None,
+    failed_action: str,
+    payload: dict[str, object],
+    now: datetime,
+) -> User:
+    """Periksa email+password dengan penghitung gagal per (akun, `throttle_key`).
+
+    Kegagalan dicatat di audit sebagai `failed_action` lalu menaikkan LoginError
+    dengan pesan tunggal. Pemanggil wajib commit juga saat gagal, supaya
+    penghitung dan jejak audit tersimpan.
+    """
+    normalized = normalize_email(email)
+    user = await session.scalar(select(User).where(User.email == normalized))
+
+    if user is None:
+        await verify_password_async(password, DUMMY_PASSWORD_HASH)  # samakan waktu respons
+        await _audit(
+            session, failed_action, None, ip_address, {**payload, "reason": "unknown_email"}
+        )
+        raise LoginError(LOGIN_FAILED)
+
+    if await _locked_until(session, user.id, throttle_key, now) is not None:
+        await verify_password_async(password, DUMMY_PASSWORD_HASH)
+        await _audit(session, failed_action, user.id, ip_address, {**payload, "reason": "locked"})
+        raise LoginError(LOGIN_FAILED)
+
+    password_ok = await verify_password_async(password, user.password_hash)
+    if not password_ok or not user.is_active:
+        reason = "inactive" if not user.is_active else "wrong_password"
+        if reason == "wrong_password" and await _register_failure(
+            session, settings, user.id, throttle_key, now
+        ):
+            reason = "wrong_password_locked"
+        await _audit(session, failed_action, user.id, ip_address, {**payload, "reason": reason})
+        raise LoginError(LOGIN_FAILED)
+
+    await session.execute(
+        delete(LoginThrottle).where(
+            LoginThrottle.user_id == user.id, LoginThrottle.ip_address == throttle_key
+        )
+    )
+    if needs_rehash(user.password_hash):
+        user.password_hash = await hash_password_async(password)
+    return user
+
+
 async def login(
     session: AsyncSession,
     settings: Settings,
@@ -132,38 +185,18 @@ async def login(
     user_agent: str | None,
 ) -> LoginResult:
     now = _now()
-    ip = ip_address or UNKNOWN_IP
-    normalized = normalize_email(email)
-    user = await session.scalar(select(User).where(User.email == normalized))
-
-    if user is None:
-        await verify_password_async(password, DUMMY_PASSWORD_HASH)  # samakan waktu respons
-        await _audit(session, "auth.login_failed", None, ip_address, {"reason": "unknown_email"})
-        raise LoginError(LOGIN_FAILED)
-
-    if await _locked_until(session, user.id, ip, now) is not None:
-        await verify_password_async(password, DUMMY_PASSWORD_HASH)
-        await _audit(session, "auth.login_failed", user.id, ip_address, {"reason": "locked"})
-        raise LoginError(LOGIN_FAILED)
-
-    password_ok = await verify_password_async(password, user.password_hash)
-    if not password_ok or not user.is_active:
-        reason = "inactive" if not user.is_active else "wrong_password"
-        if reason == "wrong_password" and await _register_failure(
-            session, settings, user.id, ip, now
-        ):
-            reason = "wrong_password_locked"
-        await _audit(session, "auth.login_failed", user.id, ip_address, {"reason": reason})
-        raise LoginError(LOGIN_FAILED)
-
-    await session.execute(
-        delete(LoginThrottle).where(
-            LoginThrottle.user_id == user.id, LoginThrottle.ip_address == ip
-        )
+    user = await _check_credentials(
+        session,
+        settings,
+        email,
+        password,
+        throttle_key=ip_address or UNKNOWN_IP,
+        ip_address=ip_address,
+        failed_action="auth.login_failed",
+        payload={},
+        now=now,
     )
     user.last_login_at = now
-    if needs_rehash(user.password_hash):
-        user.password_hash = await hash_password_async(password)
 
     token = new_session_token()
     expires_at = now + timedelta(minutes=settings.session_idle_minutes)
@@ -181,6 +214,45 @@ async def login(
     await _audit(session, "auth.login", user.id, ip_address, None)
     await session.flush()
     return LoginResult(user, token, expires_at)
+
+
+# Kunci penghitung gagal untuk konfirmasi password dari baris perintah. Terpisah
+# dari penghitung login web: penguncian CLI tidak mengunci akun di browser, dan
+# sebaliknya.
+CLI_CHANNEL = "cli"
+
+
+async def reauthenticate(
+    session: AsyncSession,
+    settings: Settings,
+    email: str,
+    password: str,
+    *,
+    channel: str,
+    purpose: str,
+) -> User:
+    """Konfirmasi password untuk tindakan berisiko, tanpa membuat sesi.
+
+    Memakai penghitung gagal dan penguncian yang sama dengan login, dengan
+    `channel` sebagai kuncinya. Berhasil atau gagal, tercatat di audit bersama
+    `purpose` (misalnya "dataset.withdraw"). Tidak melakukan commit; pemanggil
+    wajib commit juga saat gagal.
+    """
+    payload: dict[str, object] = {"channel": channel, "purpose": purpose}
+    user = await _check_credentials(
+        session,
+        settings,
+        email,
+        password,
+        throttle_key=channel,
+        ip_address=None,
+        failed_action="auth.reauth_failed",
+        payload=payload,
+        now=_now(),
+    )
+    await _audit(session, "auth.reauth", user.id, None, payload)
+    await session.flush()
+    return user
 
 
 async def resolve_session(

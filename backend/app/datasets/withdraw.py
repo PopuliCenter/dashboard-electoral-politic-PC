@@ -2,7 +2,8 @@
 
 Dipakai bila dua dataset mengklaim sel yang sama dan manusia memutuskan yang
 sudah ada harus diganti, atau bila versi yang sudah dipromosikan ternyata
-salah. Hanya Admin; alasan wajib; tercatat di `audit_logs`.
+salah. Hanya Admin, dan Admin itu harus mengetik passwordnya (keputusan
+pengguna, review T5.3); alasan wajib; tercatat di `audit_logs`.
 
 Yang dihapus hanya BARIS hasilnya. Baris `dataset_versions` tetap ada sebagai
 riwayat, dan metadata menandainya "ditarik". Versi yang ditarik tidak bisa
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.datasets.common import (
     WITHDRAW_ACTION,
     DatasetError,
@@ -24,8 +26,10 @@ from app.datasets.common import (
 )
 from app.models import AuditLog, DatasetVersion, Role, User
 from app.models.enums import RoleCode
+from app.services import auth
 
 MIN_REASON_LENGTH = 10
+WITHDRAW_DENIED_ACTION = "dataset.withdraw_denied"
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,48 @@ async def check_admin(session: AsyncSession, user: User | None, email: str) -> U
     if not user.is_active or role is None or role.role_code is not RoleCode.ADMIN:
         raise DatasetError([f"{email} bukan Admin aktif; hanya Admin yang boleh menarik data"])
     return user
+
+
+async def authorize_withdraw(
+    production: AsyncSession,
+    settings: Settings,
+    email: str,
+    password: str,
+    *,
+    version_id: uuid.UUID,
+) -> User:
+    """Password lalu peran Admin, keduanya diperiksa di produksi (tempat pengguna dikelola).
+
+    Password diperiksa lebih dulu, dengan penghitung gagal dan penguncian yang
+    sama dengan login, supaya orang tanpa password tidak bisa mengetahui apakah
+    sebuah email milik Admin. Tidak melakukan commit; pemanggil wajib commit
+    juga saat ditolak, supaya penghitung gagal dan jejak audit tersimpan.
+    """
+    try:
+        user = await auth.reauthenticate(
+            production,
+            settings,
+            email,
+            password,
+            channel=auth.CLI_CHANNEL,
+            purpose=WITHDRAW_ACTION,
+        )
+    except auth.LoginError as exc:
+        raise DatasetError([str(exc)]) from exc
+    try:
+        return await check_admin(production, user, email)
+    except DatasetError:
+        production.add(
+            AuditLog(
+                actor_user_id=user.id,
+                action=WITHDRAW_DENIED_ACTION,
+                entity_type="dataset_versions",
+                entity_id=version_id,
+                payload={"by": user.email, "reason": "not_admin"},
+            )
+        )
+        await production.flush()
+        raise
 
 
 async def withdraw_version(

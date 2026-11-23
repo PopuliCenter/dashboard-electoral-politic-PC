@@ -11,11 +11,14 @@ Pemakaian (di dalam kontainer api):
 
 `load` hanya menulis ke STAGING_DATABASE_URL. `promote` membaca staging dan
 menulis ke DATABASE_URL. Keduanya menolak jalan bila kedua URL kosong atau sama.
+`withdraw` meminta password Admin (tanpa gema) sebelum menyentuh data; salah
+password dihitung dan dikunci seperti login (terpisah dari login web).
 Kode keluar 0 bila berhasil, 1 bila ditolak.
 """
 
 import argparse
 import asyncio
+import getpass
 import sys
 import uuid
 from collections.abc import AsyncIterator
@@ -31,11 +34,10 @@ from app.core.config import get_settings
 from app.datasets.common import DatasetError, describe, version_scope
 from app.datasets.promotion import promote_version, promotion_audit
 from app.datasets.staging import SourceInfo, load_into_staging
-from app.datasets.withdraw import check_admin, withdraw_version
+from app.datasets.withdraw import authorize_withdraw, withdraw_version
 from app.importer.catalog import load_catalog
 from app.importer.validator import validate_file
-from app.models import DatasetVersion, User
-from app.services.auth import normalize_email
+from app.models import DatasetVersion
 
 
 class ConfigError(Exception):
@@ -172,14 +174,22 @@ async def run_promote(args: argparse.Namespace) -> int:
 
 async def run_withdraw(args: argparse.Namespace) -> int:
     staging_url, production_url = _urls()
+    # Password diminta sebelum database target disentuh, juga di mode uji.
+    password = getpass.getpass(f"Password Admin {args.by}: ")
     # Admin selalu diperiksa di produksi: di sanalah pengguna dikelola.
     async with _session(production_url) as production:
-        user = await production.scalar(select(User).where(User.email == normalize_email(args.by)))
         try:
-            admin = await check_admin(production, user, args.by)
+            admin = await authorize_withdraw(
+                production, get_settings(), args.by, password, version_id=args.version_id
+            )
         except DatasetError as exc:
+            # Simpan penghitung gagal dan jejak audit sebelum menolak.
+            await production.commit()
             _print_problems("Penarikan ditolak.", exc.errors)
             return 1
+        # Jejak konfirmasi password tersimpan, juga di mode uji dan bila
+        # penarikannya sendiri nanti ditolak.
+        await production.commit()
 
     target = production_url if args.db == "production" else staging_url
     async with _session(target) as session:
