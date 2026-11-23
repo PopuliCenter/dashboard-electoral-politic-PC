@@ -2,7 +2,9 @@
 
 Butuh beberapa koneksi sungguhan yang masing-masing commit, jadi tidak bisa
 memakai fixture `session` yang di-rollback. Pengguna fiktif dibuat lalu
-dihapus di akhir test (CASCADE menghapus penghitungnya).
+dihapus di akhir test (CASCADE menghapus penghitungnya), bersama catatan
+`audit_logs` miliknya: `ondelete=SET NULL` tidak menghapusnya, dan tanpa ini
+setiap putaran test meninggalkan jejak `user.create` di database pengembangan.
 """
 
 import asyncio
@@ -11,13 +13,13 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
-from app.models import LoginThrottle, User
+from app.models import AuditLog, LoginThrottle, User
 from app.models.enums import RoleCode
 from app.services import auth
 
@@ -50,6 +52,12 @@ async def user_id(engine: AsyncEngine) -> AsyncGenerator[uuid.UUID, None]:
         yield created
     finally:
         async with AsyncSession(engine) as s:
+            # Audit dulu: sesudah pengguna dihapus, actor_user_id sudah menjadi NULL.
+            await s.execute(
+                delete(AuditLog).where(
+                    or_(AuditLog.entity_id == created, AuditLog.actor_user_id == created)
+                )
+            )
             await s.execute(delete(User).where(User.id == created))
             await s.commit()
 
