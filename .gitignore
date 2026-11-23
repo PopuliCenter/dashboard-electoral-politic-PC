@@ -31,6 +31,9 @@ out/
 .turbo/
 *.tsbuildinfo
 npm-debug.log*
+# Dikelola Next.js dan isinya berganti antara `next dev` dan `next build`;
+# dokumentasi Next menyuruh tidak dilacak. `npm run typecheck` membuatnya ulang.
+next-env.d.ts
 
 # Editor dan OS
 .vscode/
