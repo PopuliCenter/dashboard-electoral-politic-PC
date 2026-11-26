@@ -56,6 +56,14 @@ Selesai bila: `docker compose up` menyalakan ketiganya dan `make check` hijau. *
 - [x] T5.3 Halaman metadata sumber dan riwayat versi dataset. **20 November 2026:** API `/sources`, `/sources/{id}`, `/datasets`, `/datasets/{nama}` (wajib login) dengan metadata SDD 12.4, versi yang berlaku, "digantikan oleh", dan kejadian dari `audit_logs`; halaman `/data`. 305 test lolos. Halaman riwayat per dataset di web belum ada (datanya sudah tersedia di API).
 - [x] T5.4 Ekspor CSV/XLSX dari peta dan halaman partai, menyertakan sumber dan status data. **20 November 2026:** `/elections/{id}/results/export`, `/elections/compare/export`, `/parties/{id}/results/export` (`format=csv|xlsx`, wajib login, tercatat di `audit_logs`); openpyxl 3.1.5. 313 test lolos. Tombol unduh menyusul bersama halaman peta (T4.3) dan partai (T4.4); helper `exportUrl` sudah ada.
 
+- [ ] T5.5 Akses bertingkat (keputusan pengguna 26 November 2026; kerjakan **setelah T4.3 dan T4.4**, sebelum data internal Populi dimuat). Peran ketiga **Pembaca**: hanya membaca, dan hanya melihat yang diizinkan Admin per akun. Izin punya empat dimensi:
+  - **jenis data:** hasil resmi KPU vs data internal Populi (survei, quick count, exit poll; REVISI-v1.1 bagian 7);
+  - **cakupan wilayah:** provinsi, kab/kota, atau dapil tertentu;
+  - **tingkat rincian maksimum:** provinsi, kab/kota, atau kecamatan;
+  - **hak unduh/ekspor.**
+
+  Aturan dasarnya tolak, kecuali diizinkan. Izin diperiksa di setiap endpoint data dan ekspor, bukan hanya disembunyikan di antarmuka. Setiap perubahan izin dicatat di `audit_logs`. Perlu migrasi Alembic, halaman kelola akun dan izin untuk Admin, dan test untuk tiap dimensi. Keputusan: `docs/decisions.md`, "Akses bertingkat".
+
 ## Tahap 6 — Operasi (minggu 16–17)
 
 - [ ] T6.1 `docker-compose.prod.yml` untuk Server A dan Server B; Nginx + TLS; Server B tanpa port publik. **Wajib:** Nginx meneruskan alamat IP asli (`X-Forwarded-For`/`X-Real-IP`) dan uvicorn dijalankan dengan `--proxy-headers --forwarded-allow-ips` yang hanya memercayai Nginx. Tanpa itu semua permintaan tampak dari IP Nginx dan penguncian login per akun+IP (T5.1) berperilaku seperti per akun saja.
