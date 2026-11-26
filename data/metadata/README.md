@@ -27,6 +27,14 @@ python pipeline/extract/kpu_dokumen.py manifest   # catat checksum di data/raw/M
 ```
 
 Sumber lain punya skripnya sendiri di `pipeline/extract/` (batas wilayah BIG,
-salinan Sirekap). Dokumen di Google Drive dan yang harus diminta lewat PPID
-diunduh manual, lalu disimpan di `data/raw/<sumber>/<tahun>/` dan dicatat di
-MANIFEST.
+salinan Sirekap). Dokumen di Google Drive, hasil permohonan PPID, atau berkas
+yang diserahkan langsung diarsipkan dengan:
+
+```
+python pipeline/extract/arsip_lokal.py BERKAS... --dest data/raw/<sumber>/<tahun> \
+    --source "Penerbit: nama dokumen" --origin "URL asal, atau keterangan bila tidak ada" \
+    [--election-year 2024] [--election-type legislative_dpr] [--region-level district] [--notes "..."]
+```
+
+Berkas disalin apa adanya dan dicatat di MANIFEST; lalu tambahkan barisnya di
+`source_inventory.csv`.

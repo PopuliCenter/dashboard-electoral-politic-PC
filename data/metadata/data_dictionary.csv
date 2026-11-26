@@ -107,7 +107,7 @@ source_inventory.csv,document_number,teks,tidak,,Nomor keputusan atau formulir,1
 source_inventory.csv,source_url,teks,tidak,,Halaman sumber,1-2,T1.1
 source_inventory.csv,file_url,teks,tidak,,Berkas spesifik yang sudah dicek,1-2,T1.1
 source_inventory.csv,access_type,teks,ya,,"PDF pindaian, PDF digital, XLSX, CSV, API",1-2,T1.1
-source_inventory.csv,collection_method,teks,ya,unduh | API | API arsip | unduh manual | permohonan PPID,,1-2,T1.1
+source_inventory.csv,collection_method,teks,ya,unduh | API | API arsip | unduh manual | diserahkan pengguna | permohonan PPID,,1-2,T1.1
 source_inventory.csv,geographic_level,teks,ya,,,1-2,T1.1
 source_inventory.csv,reference_period,teks,ya,,,1-2,T1.1
 source_inventory.csv,update_frequency,teks,ya,,,1-2,T1.1
@@ -126,6 +126,6 @@ source_inventory.csv,notes,teks,tidak,,,1-2,T1.1
 ../raw/MANIFEST.csv,election_type,teks,tidak,presidential | legislative_dpr | legislative_dprd_province,,1,T1.2
 ../raw/MANIFEST.csv,region_level,teks,tidak,province | regency | district,,1,T1.2
 ../raw/MANIFEST.csv,retrieved_at,waktu ISO 8601 UTC,ya,,,1,T1.2
-../raw/MANIFEST.csv,source_url,teks,ya,,URL persis yang diunduh,1,T1.2
+../raw/MANIFEST.csv,source_url,teks,ya,,"URL persis yang diunduh; untuk berkas yang diserahkan, asalnya apa adanya (tidak ditebak)",1,T1.2
 ../raw/MANIFEST.csv,sha256,teks,ya,,Berkas mentah tidak boleh berubah isinya,1,T1.2
 ../raw/MANIFEST.csv,notes,teks,tidak,,Termasuk status resmi/tidak resmi,1,T1.2
