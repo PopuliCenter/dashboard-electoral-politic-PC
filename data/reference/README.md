@@ -8,8 +8,42 @@ Berkas acuan yang boleh masuk Git karena kecil dan tidak mengandung data individ
 | `elections.csv` | Enam kontestasi fase 1: Pilpres, DPR RI, DPRD Provinsi, masing-masing 2019 dan 2024 | T2.5 | Terisi, **menunggu verifikasi peneliti** |
 | `candidate_pairs.csv` | Pasangan calon presiden dan wakil presiden, dengan nomor urut | T2.5 | Terisi, **menunggu verifikasi peneliti** |
 | `party_colors.csv` | Warna partai `#RRGGBB` dari identitas visual resmi, dengan sumber dan `verified_by` | T4.5 | Kolom warna **kosong**; selama kosong peta memakai abu-abu netral dengan nomor urut sebagai pembeda. Diperiksa oleh `make seed-dry`; perubahan berlaku setelah layanan api di-restart (`docker compose restart api`). Di produksi warna tanpa `verified_by` tidak dipakai |
-| `kode_wilayah_jabar.csv` | Kode Kemendagri: provinsi, 27 kabupaten/kota, kecamatan | T1.3 | Belum ada |
-| `batas_wilayah_*.geojson` | Batas wilayah kab/kota dan kecamatan, dengan sumber dan tahun versi | T1.4 | Belum ada |
+| `kode_wilayah_jabar.csv` | Kode Kemendagri: provinsi, 27 kabupaten/kota (18 kabupaten, 9 kota), 627 kecamatan | T1.3 | Terisi dari BIG edisi Juni 2026, **menunggu verifikasi peneliti**. Belum ditandai masa berlakunya untuk 2019 dan 2024 |
+| `batas_wilayah_kabkota_jabar.geojson`, `batas_wilayah_kecamatan_jabar.geojson` | Batas wilayah, digeneralisasi oleh server BIG (toleransi 0,0001 derajat ≈ 11 m) | T1.4 | Terisi dari BIG edisi Juni 2026, **menunggu verifikasi peneliti**. Lihat catatan geometri di bawah |
+
+## Kode dan batas wilayah (T1.3, T1.4)
+
+Sumbernya layanan resmi Badan Informasi Geospasial "Batas Wilayah Administrasi"
+edisi Juni 2026. Setiap poligon di sana membawa kode Kemendagri (`KDPPUM`,
+`KDPKAB`, `KDCPUM`); kolom kode BPS di layanan itu kosong. Dibuat ulang dengan:
+
+```
+python pipeline/extract/big_wilayah.py fetch --edition 2026-06     # unduh ke data/raw/big/
+python pipeline/extract/big_wilayah.py build --edition 2026-06     # tulis berkas di folder ini
+python pipeline/extract/big_wilayah.py manifest --edition 2026-06  # catat di data/raw/MANIFEST.csv
+```
+
+Yang perlu diketahui sebelum dipakai:
+
+- **Batas edisi 2026, bukan batas hari pemungutan suara.** Kode yang dipakai KPU
+  pada 2019 dan 2024 harus dicocokkan dulu (T2.3, template
+  `data/metadata/templates/padanan_wilayah.csv`). Pembanding awal: ke-627 kode
+  kecamatan di salinan Sirekap 2024 semuanya ada di berkas ini. Kode 2019 belum
+  dicek.
+- **Satu poligon dilewati**: BIG punya satu area kecil berlabel "Area Tidak
+  Terdefinisi" di Kabupaten Cirebon, tanpa kode, yang belum dialokasikan ke desa
+  mana pun. Ia ada di data mentah, tidak ada di berkas ini.
+- **Geometri**: semua poligon resolusi penuh di `data/raw/big/2026-06/` valid
+  (`ST_IsValid`, 27 kab/kota dan 628 kecamatan). Generalisasi server membuat 3
+  kab/kota (32.09, 32.12, 32.18) dan 6 kecamatan (32.05.30, 32.09.15, 32.09.39,
+  32.12.11, 32.12.29, 32.13.22) tidak valid. Impor wilayah T2.2 mengambil
+  geometri dari resolusi penuh; berkas tergeneralisasi di sini untuk pratinjau
+  dan pemeriksaan, bukan untuk diimpor apa adanya.
+- **Luas**: total poligon kab/kota dan kecamatan sama, 37.056 km² (dihitung di
+  PostGIS). Bandingkan dengan luas resmi di publikasi BPS saat verifikasi.
+- **Nama**: BIG menulis kabupaten tanpa awalan ("Bogor") dan kota dengan awalan
+  ("Kota Bogor"). Kolom `name` memakai bentuk baku "Kabupaten Bogor"; nama asli
+  di `source_name`.
 
 ## Memasukkan ke database
 
