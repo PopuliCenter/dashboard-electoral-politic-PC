@@ -1,0 +1,131 @@
+file,column,type,required,allowed_values,description,phase,task
+templates/impor_suara_partai.csv,election_type,teks,ya,legislative_dpr | legislative_dprd_province,Satu berkas satu kontestasi,1,"T3.1, T3.2"
+templates/impor_suara_partai.csv,election_year,bilangan,ya,2019 | 2024,,1,"T3.1, T3.2"
+templates/impor_suara_partai.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Harus berlaku pada hari pemungutan suara,1,"T3.1, T3.2"
+templates/impor_suara_partai.csv,party_code,teks,ya,party_code di data/reference/parties.csv,Partai harus ikut pemilu tahun itu,1,"T3.1, T3.2"
+templates/impor_suara_partai.csv,vote_count,bilangan bulat,ya,">= 0, tanpa pemisah ribuan","Suara partai termasuk suara calegnya. Angka tidak ada di dokumen: hapus barisnya, jangan ditebak",1,"T3.1, T3.2"
+templates/impor_suara_partai.csv,data_status,teks,ya,official | unofficial,Satu berkas satu status,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,election_type,teks,ya,presidential,,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,election_year,bilangan,ya,2019 | 2024,,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,pair_number,bilangan,ya,pair_number di data/reference/candidate_pairs.csv,,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,vote_count,bilangan bulat,ya,>= 0,Angka tidak ada di dokumen: hapus barisnya,1,"T3.1, T3.2"
+templates/impor_suara_paslon.csv,data_status,teks,ya,official | unofficial,,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,election_type,teks,ya,presidential | legislative_dpr | legislative_dprd_province,,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,election_year,bilangan,ya,2019 | 2024,,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,registered_voters,bilangan bulat,tidak,>= 0 atau kosong,"DPT. Kosong = tidak tersedia, bukan 0",1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,voters_turned_out,bilangan bulat,tidak,>= 0 atau kosong,Pengguna hak pilih,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,valid_votes,bilangan bulat,tidak,>= 0 atau kosong,Suara sah; penyebut vote share,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,invalid_votes,bilangan bulat,tidak,>= 0 atau kosong,Suara tidak sah,1,"T3.1, T3.2"
+templates/impor_partisipasi.csv,data_status,teks,ya,official | unofficial,,1,"T3.1, T3.2"
+templates/padanan_wilayah.csv,from_region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Kode yang berlaku pada Pemilu tahun asal,1,T2.3
+templates/padanan_wilayah.csv,from_year,bilangan,ya,2019,,1,T2.3
+templates/padanan_wilayah.csv,to_region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Kode yang berlaku pada Pemilu tahun tujuan,1,T2.3
+templates/padanan_wilayah.csv,to_year,bilangan,ya,2024,,1,T2.3
+templates/padanan_wilayah.csv,relation,teks,ya,same | split | merged | recoded,Swing hanya dihitung lewat padanan ini,1,T2.3
+templates/padanan_wilayah.csv,source,teks,ya,,Dasar hukum pemekaran/penggabungan atau daftar kode Kemendagri,1,T2.3
+templates/padanan_wilayah.csv,evidence,teks,tidak,,Kutipan atau halaman dokumen,1,T2.3
+templates/padanan_wilayah.csv,verified_by,teks,tidak,,Diisi peneliti yang memeriksa; kosong = belum diverifikasi,1,T2.3
+templates/padanan_wilayah.csv,notes,teks,tidak,,,1,T2.3
+templates/dapil.csv,election_type,teks,ya,legislative_dpr | legislative_dprd_province,,1,T2.6
+templates/dapil.csv,election_year,bilangan,ya,2019 | 2024,,1,T2.6
+templates/dapil.csv,dapil_code,teks,ya,"misal JABAR-I, JABAR-1",Dapil punya kode sendiri; bukan kode wilayah,1,T2.6
+templates/dapil.csv,dapil_name,teks,ya,,Nama sesuai keputusan KPU,1,T2.6
+templates/dapil.csv,seats,bilangan,tidak,,Alokasi kursi,1,T2.6
+templates/dapil.csv,source,teks,ya,,Keputusan KPU penetapan dapil,1,T2.6
+templates/dapil.csv,verified_by,teks,tidak,,,1,T2.6
+templates/dapil_wilayah.csv,election_type,teks,ya,legislative_dpr | legislative_dprd_province,,1,T2.6
+templates/dapil_wilayah.csv,election_year,bilangan,ya,2019 | 2024,,1,T2.6
+templates/dapil_wilayah.csv,dapil_code,teks,ya,dapil_code di dapil.csv,,1,T2.6
+templates/dapil_wilayah.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05","Kab/kota, atau kecamatan bila dapil membelah kab/kota",1,T2.6
+templates/dapil_wilayah.csv,source,teks,ya,,,1,T2.6
+templates/dapil_wilayah.csv,verified_by,teks,tidak,,,1,T2.6
+templates/dapil_peserta.csv,election_type,teks,ya,legislative_dpr | legislative_dprd_province,,1,T2.6
+templates/dapil_peserta.csv,election_year,bilangan,ya,2019 | 2024,,1,T2.6
+templates/dapil_peserta.csv,dapil_code,teks,ya,dapil_code di dapil.csv,,1,T2.6
+templates/dapil_peserta.csv,party_code,teks,ya,party_code di parties.csv,,1,T2.6
+templates/dapil_peserta.csv,has_candidates,teks,ya,ya | tidak,Wajib dari Daftar Calon Tetap; tidak boleh disimpulkan dari tidak adanya suara,1,T2.6
+templates/dapil_peserta.csv,source,teks,ya,,Keputusan DCT per dapil,1,T2.6
+templates/dapil_peserta.csv,verified_by,teks,tidak,,,1,T2.6
+templates/rekonsiliasi.csv,election_type,teks,ya,presidential | legislative_dpr | legislative_dprd_province,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,election_year,bilangan,ya,2019 | 2024,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Biasanya kab/kota,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,metric,teks,ya,vote_count | registered_voters | voters_turned_out | valid_votes | invalid_votes,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,participant_key,teks,tidak,party_code atau pair_number,Kosong untuk angka partisipasi,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,official_value,bilangan bulat,tidak,,Dari rekapitulasi resmi; kosong bila dokumen tidak ada,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,official_source,teks,ya,dataset_id di source_inventory.csv,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,comparison_value,bilangan bulat,tidak,,"Dari data yang dibandingkan (impor, Sirekap, Open Data)",1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,comparison_source,teks,ya,dataset_id di source_inventory.csv,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,difference,bilangan bulat,tidak,comparison_value - official_value,Gerbang 2: harus 0 untuk data yang dimuat,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,status,teks,ya,cocok | selisih | tidak_tersedia,,1,"T3.3, Gerbang 2"
+templates/rekonsiliasi.csv,notes,teks,tidak,,,1,"T3.3, Gerbang 2"
+templates/demografi_bps.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Kab/kota,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,year,bilangan,ya,,Tahun referensi indikator,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,indicator_code,teks,ya,,Kode variabel BPS WebAPI,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,indicator_name,teks,ya,,,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,value,desimal,tidak,,"Kosong = tidak tersedia, bukan 0",2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,unit,teks,ya,,Satuan wajib,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,source_publication,teks,ya,,,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,source_url,teks,ya,,,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/demografi_bps.csv,retrieved_at,waktu ISO 8601,ya,,,2,Fase 2 (REVISI-v1.1 bagian 3)
+templates/survei_agregat.csv,survei_id,teks,ya,,ID studi internal Populi,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,pertanyaan,teks,ya,,Teks pertanyaan sesuai versi kuesioner,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,kategori_jawaban,teks,ya,,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Hanya tingkat yang didukung desain sampel,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,persentase,desimal,ya,0-100,Agregat tertimbang; tidak ada data individu,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,n,bilangan,ya,,Sel di bawah ambang n tidak ditampilkan,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,margin_of_error,desimal,tidak,,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,tanggal_lapangan_mulai,tanggal,ya,,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,tanggal_lapangan_selesai,tanggal,ya,,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/survei_agregat.csv,klasifikasi,teks,ya,internal | restricted,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,periode,teks,ya,YYYY-MM,Bulanan,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Kab/kota,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,entitas_jenis,teks,ya,partai | tokoh,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,entitas,teks,ya,,party_code untuk partai,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,jumlah_artikel,bilangan bulat,ya,>= 0,,2,Fase 2 (REVISI-v1.1 bagian 7)
+templates/media_agregat.csv,jumlah_media,bilangan bulat,ya,>= 0,,2,Fase 2 (REVISI-v1.1 bagian 7)
+../reference/kode_wilayah_jabar.csv,region_code,teks,ya,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",Dari atribut KDPPUM/KDPKAB/KDCPUM BIG,1,T1.3
+../reference/kode_wilayah_jabar.csv,region_level,teks,ya,province | regency | district,,1,T1.3
+../reference/kode_wilayah_jabar.csv,parent_code,teks,ya kecuali provinsi,"Kode Kemendagri bertitik sebagai TEKS: 32, 32.04, 32.04.05",,1,T1.3
+../reference/kode_wilayah_jabar.csv,name,teks,ya,,Nama baku: Kabupaten X / Kota X / nama kecamatan,1,T1.3
+../reference/kode_wilayah_jabar.csv,source_name,teks,ya,,Nama persis seperti di sumber,1,T1.3
+../reference/kode_wilayah_jabar.csv,regency_type,teks,tidak,kabupaten | kota,Hanya untuk kab/kota,1,T1.3
+../reference/kode_wilayah_jabar.csv,source,teks,ya,,Sumber dan edisi,1,T1.3
+../reference/kode_wilayah_jabar.csv,boundary_metadata,teks,tidak,,Kode METADATA poligon BIG,1,T1.3
+../reference/kode_wilayah_jabar.csv,verified_by,teks,tidak,,Kosong = belum diverifikasi peneliti,1,T1.3
+../reference/kode_wilayah_jabar.csv,notes,teks,tidak,,,1,T1.3
+source_inventory.csv,dataset_id,teks,ya,,ID unik; dirujuk oleh rekonsiliasi dan MANIFEST,1-2,T1.1
+source_inventory.csv,phase,teks,ya,1 | 2,Fase menurut REVISI-v1.1,1-2,T1.1
+source_inventory.csv,priority,teks,ya,P0 | P1 | P2,Prioritas menurut dokumen kebutuhan data,1-2,T1.1
+source_inventory.csv,domain,teks,ya,,,1-2,T1.1
+source_inventory.csv,dataset_name,teks,ya,,,1-2,T1.1
+source_inventory.csv,election_type,teks,tidak,presidential | legislative_dpr | legislative_dprd_province,,1-2,T1.1
+source_inventory.csv,election_year,bilangan,tidak,,,1-2,T1.1
+source_inventory.csv,institution,teks,ya,,,1-2,T1.1
+source_inventory.csv,document_number,teks,tidak,,Nomor keputusan atau formulir,1-2,T1.1
+source_inventory.csv,source_url,teks,tidak,,Halaman sumber,1-2,T1.1
+source_inventory.csv,file_url,teks,tidak,,Berkas spesifik yang sudah dicek,1-2,T1.1
+source_inventory.csv,access_type,teks,ya,,"PDF pindaian, PDF digital, XLSX, CSV, API",1-2,T1.1
+source_inventory.csv,collection_method,teks,ya,unduh | API | API arsip | unduh manual | permohonan PPID,,1-2,T1.1
+source_inventory.csv,geographic_level,teks,ya,,,1-2,T1.1
+source_inventory.csv,reference_period,teks,ya,,,1-2,T1.1
+source_inventory.csv,update_frequency,teks,ya,,,1-2,T1.1
+source_inventory.csv,sensitivity,teks,ya,public | internal | confidential | restricted,,1-2,T1.1
+source_inventory.csv,data_status,teks,ya,official | unofficial | internal_aggregate,,1-2,T1.1
+source_inventory.csv,availability_status,teks,ya,available | partial | unavailable | not_checked,,1-2,T1.1
+source_inventory.csv,contains_participation,teks,tidak,ya | tidak | belum dicek,"DPT, pengguna hak pilih, suara sah/tidak sah",1-2,T1.1
+source_inventory.csv,auto_fetch,teks,ya,ya | tidak,ya = diunduh pipeline/extract/kpu_dokumen.py,1-2,T1.1
+source_inventory.csv,raw_path,teks,tidak,,Lokasi di data/raw/,1-2,T1.1
+source_inventory.csv,validation_status,teks,ya,unverified | in_review | validated | rejected | superseded,,1-2,T1.1
+source_inventory.csv,owner,teks,tidak,,Penanggung jawab internal,1-2,T1.1
+source_inventory.csv,notes,teks,tidak,,,1-2,T1.1
+../raw/MANIFEST.csv,file_path,teks,ya,,Relatif terhadap akar repo,1,T1.2
+../raw/MANIFEST.csv,source,teks,ya,,,1,T1.2
+../raw/MANIFEST.csv,election_year,bilangan,tidak,,,1,T1.2
+../raw/MANIFEST.csv,election_type,teks,tidak,presidential | legislative_dpr | legislative_dprd_province,,1,T1.2
+../raw/MANIFEST.csv,region_level,teks,tidak,province | regency | district,,1,T1.2
+../raw/MANIFEST.csv,retrieved_at,waktu ISO 8601 UTC,ya,,,1,T1.2
+../raw/MANIFEST.csv,source_url,teks,ya,,URL persis yang diunduh,1,T1.2
+../raw/MANIFEST.csv,sha256,teks,ya,,Berkas mentah tidak boleh berubah isinya,1,T1.2
+../raw/MANIFEST.csv,notes,teks,tidak,,Termasuk status resmi/tidak resmi,1,T1.2
