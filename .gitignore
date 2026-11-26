@@ -13,6 +13,8 @@ data/tiles/*
 !data/tiles/.gitkeep
 # Hasil olahan antara (misalnya pembanding Sirekap tidak resmi), dibuat ulang dari data/raw
 data/staging/
+# Pintasan lokal (junction Windows) ke data/raw dengan nama Indonesia; isinya sama dengan data/raw
+/data mentah
 
 # Python
 __pycache__/
