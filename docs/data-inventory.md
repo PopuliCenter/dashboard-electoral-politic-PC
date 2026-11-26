@@ -22,7 +22,7 @@ untuk dibandingkan (REVISI-v1.1 bagian 3).
 | DPR RI | 2019 | Resmi per dapil, dengan partisipasi (`KPU-OD-86`) | **Resmi, 27/27**: DD1-DPR Open Data XLSX untuk 10 dapil (23 kab/kota) dan pindaian Lamp. II.30 untuk Dapil X (Ciamis, Kuningan, Pangandaran, Kota Banjar); memuat partisipasi | Kota Bogor dan Sumedang DB1 (Drive) |
 | DPRD Provinsi | 2019 | **Tidak ada daring**: keputusan hasil KPU Jabar tidak ada di JDIH; berkas Kpt 87 rusak | Tidak ada | Kota Bogor dan Sumedang DB1 (Drive) |
 | Pilpres | 2024 | Resmi: Kpt 360 Lamp. I (pemetaan lampiran belum terverifikasi); partisipasi Kpt 1043 | **Tidak ada resmi daring.** Kab. Indramayu dari D.HASIL KABKO (diserahkan pengguna). Pembanding: salinan Sirekap 27/27 | Kota Bogor D.HASIL (Drive); **Kab. Indramayu D.HASIL KABKO, 31 kecamatan, sudah diekstrak**. Pembanding: Sirekap 27/27 kab/kota |
-| DPR RI | 2024 | Resmi per dapil: Kpt 360 Lamp. II (belum terverifikasi); partisipasi per dapil Kpt 1043 | **Tidak ada resmi daring.** Kab. Indramayu dari D.HASIL KABKO. Pembanding: salinan Sirekap | Kota Bogor D.HASIL (Drive); **Kab. Indramayu, 31 kecamatan, sudah diekstrak**. Pembanding: Sirekap 25/27 kab/kota |
+| DPR RI | 2024 | Resmi per dapil: **Kpt 360 Lamp. III diarsipkan** (suara partai dan caleg per dapil, PDF digital; Jawa Barat halaman 158–250, `KPU-2024-KPT360-L3`); Lamp. II belum terverifikasi; partisipasi per dapil Kpt 1043 | **Tidak ada resmi daring.** Kab. Indramayu dari D.HASIL KABKO. Pembanding: salinan Sirekap | Kota Bogor D.HASIL (Drive); **Kab. Indramayu, 31 kecamatan, sudah diekstrak**. Pembanding: Sirekap 25/27 kab/kota |
 | DPRD Provinsi | 2024 | Resmi per dapil (15 dapil): Kpt KPU Jabar 13/2024, tanpa partisipasi | **Tidak ada resmi daring.** Kab. Indramayu dari D.HASIL KABKO. Pembanding: salinan Sirekap (tingkat provinsi, per kab/kota) | Kota Bogor D.HASIL (Drive); **Kab. Indramayu, 31 kecamatan, sudah diekstrak**. Pembanding: Sirekap 1/27 kab/kota |
 
 Kode dan batas wilayah: lengkap dari BIG edisi Juni 2026, 27 kab/kota dan 627
@@ -70,5 +70,8 @@ DPD dan DPRD kabupaten di dokumen yang sama di luar cakupan fase 1.
    Sumedang (2019) yang tercantum di inventaris. Arsipkan dengan
    `python pipeline/extract/arsip_lokal.py BERKAS... --dest data/raw/<sumber>/<tahun> --source "..." --origin "<URL>"`.
 4. **Salin `data/raw/` ke NAS** (T1.2).
-5. **Verifikasi** kode wilayah dan isi Lampiran I–IV Kpt 360 (keempat berkas
-   tampak sama di bagian awalnya; isi per berkas belum dipastikan).
+5. **Verifikasi** kode wilayah dan isi Lampiran I, II, dan IV Kpt 360.
+   Lampiran III sudah dipastikan (suara partai dan caleg DPR per dapil).
+6. **Data DPR RI 2024 dicicil pengguna.** Berkas pertama (26 November 2026)
+   adalah Lampiran III Kpt 360, identik dengan berkas JDIH. Rincian per kab/kota
+   dan kecamatan tetap membutuhkan D.HASIL tingkat provinsi dan kab/kota.
