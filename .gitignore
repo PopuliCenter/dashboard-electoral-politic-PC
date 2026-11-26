@@ -11,6 +11,8 @@ data/raw/*
 !data/raw/MANIFEST.csv
 data/tiles/*
 !data/tiles/.gitkeep
+# Hasil olahan antara (misalnya pembanding Sirekap tidak resmi), dibuat ulang dari data/raw
+data/staging/
 
 # Python
 __pycache__/
